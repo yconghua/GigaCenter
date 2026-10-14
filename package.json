@@ -1,6 +1,6 @@
 {
   "name": "gigacenter",
-  "version": "0.1.0",
+  "version": "1.0.1",
   "description": "千兆宇宙中心 - 本地数据格式转换与数据分析工具",
   "private": true,
   "main": "dist-electron/electron/main.js",
