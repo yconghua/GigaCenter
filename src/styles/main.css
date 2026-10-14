@@ -1,0 +1,22 @@
+@import 'tailwindcss';
+
+/* 主题 token 定义见 public/theme.css（index.html 静态引入，不经构建管线）。
+   本文件只保留基础布局与字号基准。 */
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+html {
+  /* Tailwind 的 rem 单位基于此根字号；fontSize(px) / 14 得到缩放比例（默认值在 theme.css） */
+  font-size: calc(16px * var(--font-scale));
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: var(--c-bg);
+  color: var(--c-text);
+}

@@ -1,0 +1,24 @@
+appId: com.gigacenter.app
+productName: GigaCenter
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist-electron/**/*
+  - dist/**/*
+  - src/assets/logo/logo.png
+  - package.json
+asar: true
+# better-sqlite3 为 Node-API prebuilt（NAPI 跨 Electron 版本兼容），无需源码 rebuild
+npmRebuild: false
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
