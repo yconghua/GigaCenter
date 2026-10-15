@@ -326,18 +326,18 @@ async function onResetSession(): Promise<void> {
                 <option value="blank">留空</option>
               </select>
             </label>
-            <label class="text-xs text-[var(--c-text-2)]">
-              表头行：
-              <input
-                type="number"
-                min="0"
-                class="w-14 rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-1 py-0.5 text-xs"
-                :disabled="convert.locked"
-                :value="currentCfg.headerRowIndex"
-                @change="(e) => { convert.setHeaderRow(currentSheetId as number, Number((e.target as HTMLInputElement).value) || 0); void onReinspect() }"
-              />
-            </label>
           </template>
+          <label class="text-xs text-[var(--c-text-2)]">
+            表头行：
+            <input
+              type="number"
+              min="0"
+              class="w-14 rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-1 py-0.5 text-xs"
+              :disabled="convert.locked"
+              :value="currentCfg.headerRowIndex"
+              @change="(e) => { convert.setHeaderRow(currentSheetId as number, Number((e.target as HTMLInputElement).value) || 0); void onReinspect() }"
+            />
+          </label>
         </div>
         <div v-for="n in currentInspect.notices" :key="n" class="mb-1 text-xs text-[var(--c-warn)]">⚠ {{ n }}</div>
         <div class="overflow-auto">
