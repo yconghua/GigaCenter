@@ -49,6 +49,7 @@ export const useConvertStore = defineStore('convert', {
           include: old ? old.include : !sheet.hidden,
           tableName: old?.tableName ?? sheet.name,
           columnTypes,
+          columnNames: { ...(old?.columnNames ?? {}) },
           formulaMode: old?.formulaMode ?? 'value',
           mergeMode: old?.mergeMode ?? 'fill',
           headerRowIndex: old?.headerRowIndex ?? 0
@@ -62,6 +63,13 @@ export const useConvertStore = defineStore('convert', {
     setColumnType(sheetId: number, colIndex: number, type: ColumnType): void {
       const cfg = this.sheetConfigs[sheetId]
       if (cfg) cfg.columnTypes[colIndex] = type
+    },
+    setColumnName(sheetId: number, colIndex: number, name: string): void {
+      const cfg = this.sheetConfigs[sheetId]
+      if (!cfg) return
+      const trimmed = name.trim()
+      if (trimmed) cfg.columnNames[colIndex] = trimmed
+      else delete cfg.columnNames[colIndex]
     },
     setTableName(sheetId: number, name: string): void {
       const cfg = this.sheetConfigs[sheetId]
@@ -96,6 +104,7 @@ export const useConvertStore = defineStore('convert', {
             include: s.include,
             tableName: s.tableName,
             columnTypes: { ...s.columnTypes },
+            columnNames: { ...s.columnNames },
             formulaMode: s.formulaMode,
             mergeMode: s.mergeMode,
             headerRowIndex: s.headerRowIndex

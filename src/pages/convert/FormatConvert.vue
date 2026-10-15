@@ -349,7 +349,13 @@ async function onResetSession(): Promise<void> {
                   class="border border-[var(--c-border)] px-2 py-1 text-left"
                 >
                   <div class="flex flex-col gap-0.5">
-                    <span class="text-[var(--c-text)]">{{ col.header }}</span>
+                    <input
+                      class="w-32 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-[var(--c-text)] hover:border-[var(--c-border-strong)] focus:border-[var(--c-border-strong)] focus:bg-[var(--c-surface)]"
+                      :disabled="convert.locked"
+                      :value="currentCfg.columnNames[col.index] ?? col.header"
+                      :title="col.header"
+                      @change="(e) => convert.setColumnName(currentSheetId as number, col.index, (e.target as HTMLInputElement).value)"
+                    />
                     <div class="flex items-center gap-1">
                       <select
                         class="rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-1 py-0.5 text-xs"

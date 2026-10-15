@@ -260,6 +260,8 @@ export interface SheetExportConfig {
   tableName: string
   /** 列类型（column index -> 类型），用户手动修正后的值 */
   columnTypes: Record<number, ColumnType>
+  /** 用户改写的列名（column index -> 新列名），未改的列不在其中 */
+  columnNames: Record<number, string>
   formulaMode: 'value' | 'formula'
   mergeMode: 'fill' | 'blank'
   headerRowIndex: number

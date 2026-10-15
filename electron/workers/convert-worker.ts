@@ -125,9 +125,11 @@ async function exportSheet(
 
   await ready
 
-  // 列名：与预览阶段同一套清洗算法，结果一致
+  // 列名：用户改写值优先，与预览阶段同一套清洗算法，结果一致
   const used = new Set<string>()
-  const cleanNames = header.map((h, i) => uniqueIdentifier(sanitizeIdentifier(h ?? `col_${i + 1}`), used))
+  const cleanNames = header.map((h, i) =>
+    uniqueIdentifier(sanitizeIdentifier(sheet.columnNames[i] ?? h ?? `col_${i + 1}`), used)
+  )
   const columns = header.map((_, i) => ({ name: cleanNames[i], type: sheet.columnTypes[i] ?? 'text' }))
 
   if (config.targetKind === 'csv') {

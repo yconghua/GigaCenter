@@ -221,13 +221,15 @@ export function buildExportPreview(
     const usedCols = new Set<string>()
     const columnMapping: Record<string, string> = {}
     for (const col of inspect.columns) {
-      const cleaned = uniqueIdentifier(sanitizeIdentifier(col.header), usedCols)
-      columnMapping[cleaned] = col.header
-      if (cleaned !== sanitizeIdentifier(col.header)) {
+      // 列名优先取用户改写值，未改则用源表头
+      const displayName = sheet.columnNames[col.index] ?? col.header
+      const cleaned = uniqueIdentifier(sanitizeIdentifier(displayName || `col_${col.index + 1}`), usedCols)
+      columnMapping[cleaned] = displayName
+      if (cleaned !== sanitizeIdentifier(displayName)) {
         issues.push({
           severity: 'warning',
           code: 'COLUMN_RENAMED',
-          message: `表「${tableName}」列「${col.header}」已清洗为「${cleaned}」`
+          message: `表「${tableName}」列「${displayName}」已清洗为「${cleaned}」`
         })
       }
     }
@@ -238,7 +240,7 @@ export function buildExportPreview(
         issues.push({
           severity: 'error',
           code: 'TYPE_UNSUPPORTED',
-          message: `表「${tableName}」列「${col.header}」类型 ${type} 目标库不支持`
+          message: `表「${tableName}」列「${sheet.columnNames[col.index] ?? col.header}」类型 ${type} 目标库不支持`
         })
       }
     }
