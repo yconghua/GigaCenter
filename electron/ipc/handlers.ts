@@ -599,7 +599,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       filters: [
         {
           name: '数据文件',
-          extensions: ['sqlite', 'db', 'sqlite3', 'csv', 'txt', 'json', 'xlsx', 'xls', 'sql', 'bson']
+          extensions: ['sqlite', 'db', 'sqlite3', 'csv', 'txt', 'json', 'xlsx', 'sql', 'bson']
         },
         { name: '所有文件', extensions: ['*'] }
       ]

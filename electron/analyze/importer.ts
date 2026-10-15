@@ -46,8 +46,12 @@ export async function probeSource(sourcePath: string): Promise<ProbeFileResult> 
     if (ext === '.json') {
       return { filePath: sourcePath, fileName, tables: [await probeJson(sourcePath)], errors: [] }
     }
-    if (ext === '.xlsx' || ext === '.xls') {
+    if (ext === '.xlsx') {
       return { filePath: sourcePath, fileName, tables: await probeExcel(sourcePath), errors: [] }
+    }
+    // .xls 为旧版 OLE2 二进制，exceljs 仅支持 .xlsx，快速失败避免长时间无响应
+    if (ext === '.xls') {
+      return { filePath: sourcePath, fileName, tables: [], errors: ['不支持 .xls 旧格式，请用 Excel/WPS 将文件另存为 .xlsx 后导入'] }
     }
     if (ext === '.sql') {
       return { filePath: sourcePath, fileName, tables: await probeSqlDump(sourcePath), errors: [] }
@@ -94,6 +98,8 @@ async function probeDelimited(sourcePath: string): Promise<ProbeTableInfo> {
     tableIndex: 0,
     sourceName: path.basename(sourcePath, path.extname(sourcePath)),
     rowCount: null,
+    sourceKind: 'delimited',
+    sampleRows: samples.slice(0, 100),
     columns: headers.map((h, i) => ({ index: i, sourceName: h, inferredType: types[i] ?? 'text' }))
   }
 }
@@ -139,6 +145,8 @@ async function probeExcel(sourcePath: string): Promise<ProbeTableInfo[]> {
       tableIndex: out.length,
       sourceName: ws.name,
       rowCount: ws.rowCount ?? null,
+      sourceKind: 'excel',
+      sampleRows: samples.slice(0, 100),
       columns: headers.map((h, i) => ({ index: i, sourceName: h, inferredType: types[i] ?? 'text' }))
     })
   }
@@ -309,15 +317,17 @@ async function importDelimitedMapped(
           .pipe(
             parse({ delimiter, relax_column_count: true, relax_quotes: true, skip_empty_lines: true, bom: true })
           )
-        let first = true
+        // 表头行索引（0 = 第 1 行是表头）：跳过表头及其前的行，其后为数据
+        const headerRowIndex = mapping.headerRowIndex ?? 0
+        let skipLeft = headerRowIndex + 1
         parser.on('data', (row: string[]) => {
           if (opts.isCancelled?.()) {
             parser.destroy()
             reject(new Error('导入已取消'))
             return
           }
-          if (first) {
-            first = false
+          if (skipLeft > 0) {
+            skipLeft--
             return
           }
           batch.push(row.map((v) => (v === '' ? null : v)))
@@ -378,8 +388,10 @@ async function importExcelSheet(
     )
     for (const row of rows) stmt.run(...colNames.map((_, i) => row[i] ?? null))
   })
-  // 第 1 行为表头（探测已确认），跳过；其余行落库
-  for (let r = 2; r <= (ws.rowCount ?? 0); r++) {
+  // 表头行索引（0 = 第 1 行是表头），数据从表头行之后开始
+  const headerRowIndex = mapping.headerRowIndex ?? 0
+  const dataStartRow = headerRowIndex + 2
+  for (let r = dataStartRow; r <= (ws.rowCount ?? 0); r++) {
     if (opts.isCancelled?.()) throw new Error('导入已取消')
     const row = ws.getRow(r)
     const out: (string | null)[] = []

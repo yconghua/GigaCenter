@@ -371,6 +371,10 @@ export interface ProbeTableInfo {
   columns: ProbeColumnInfo[]
   /** 列名是否允许重命名（视图 / SQL dump 为只读，仅表名可改） */
   readOnlyColumns?: boolean
+  /** 原始数据样本（不含探测用表头行），供前端调整表头行时本地重算列名与类型 */
+  sampleRows?: (string | null)[][]
+  /** 源文件类型：excel / csv / txt / 其他（决定是否显示表头行选择） */
+  sourceKind?: 'excel' | 'delimited' | 'other'
 }
 
 /** 导入预览（结构探测）：一个文件 */
@@ -397,6 +401,8 @@ export interface ImportTableMapping {
   tableIndex: number
   tableName: string
   columns: ImportColumnMapping[]
+  /** 表头行索引（0 = 第一行为表头），Excel/CSV/TXT 可调，缺省 0 */
+  headerRowIndex?: number
 }
 
 export interface AnalyzeImportPayload {

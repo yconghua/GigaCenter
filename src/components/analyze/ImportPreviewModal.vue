@@ -33,6 +33,16 @@ interface EditTable {
   rowCount: number | null
   readOnlyColumns: boolean
   conflict: boolean
+  /** 是否导入（未勾选的不提交） */
+  include: boolean
+  /** 表头行索引：0 = 第 1 行是表头 */
+  headerRowIndex: number
+  /** 源文件类型（决定是否显示表头行选择） */
+  sourceKind?: 'excel' | 'delimited' | 'other'
+  /** 表头行之后的原始数据样本（探测时取前 100 行），用于调整表头行时重算列 */
+  sampleRows: (string | null)[][]
+  /** 探测时的表头名（第 1 行），表头行 = 0 时使用 */
+  probeHeaderNames: string[]
   columns: EditColumn[]
 }
 
@@ -52,6 +62,11 @@ for (let fi = 0; fi < props.files.length; fi++) {
       rowCount: t.rowCount,
       readOnlyColumns,
       conflict: false,
+      include: true,
+      headerRowIndex: 0,
+      sourceKind: t.sourceKind ?? 'other',
+      sampleRows: t.sampleRows ?? [],
+      probeHeaderNames: t.columns.map((c) => c.sourceName),
       columns: t.columns.map((c) => ({
         index: c.index,
         sourceName: c.sourceName,
@@ -62,6 +77,65 @@ for (let fi = 0; fi < props.files.length; fi++) {
       }))
     })
   }
+}
+
+/** 与主进程 inferColumnTypes 相同的类型推断（简化前端重算用） */
+function inferTypes(samples: (string | null)[][]): string[] {
+  if (samples.length === 0) return []
+  const n = Math.max(...samples.map((r) => r.length), 0)
+  const types: string[] = []
+  for (let c = 0; c < n; c++) {
+    let seen = 0
+    let allInt = true
+    let allReal = true
+    let allBool = true
+    for (const row of samples) {
+      const v = row[c]
+      if (v === null || v === undefined) continue
+      seen++
+      if (!/^-?\d+$/.test(v)) allInt = false
+      if (!Number.isFinite(Number(v))) allReal = false
+      if (!/^(true|false|TRUE|FALSE|True|False)$/.test(v)) allBool = false
+    }
+    if (seen === 0) types.push('text')
+    else if (allInt) types.push('integer')
+    else if (allReal) types.push('real')
+    else if (allBool) types.push('boolean')
+    else types.push('text')
+  }
+  return types
+}
+
+/** 调整表头行后重算该表列名与类型（基于探测时的数据样本） */
+function recomputeColumns(t: EditTable): void {
+  const h = Math.max(0, Math.min(t.headerRowIndex, t.sampleRows.length))
+  t.headerRowIndex = h
+  let headerNames: string[]
+  let dataRows: (string | null)[][]
+  if (h === 0) {
+    headerNames = t.probeHeaderNames
+    dataRows = t.sampleRows
+  } else {
+    headerNames = (t.sampleRows[h - 1] ?? []).map((v, i) => v ?? `列${i + 1}`)
+    dataRows = t.sampleRows.slice(h)
+  }
+  const types = inferTypes(dataRows)
+  const n = headerNames.length
+  t.columns = Array.from({ length: n }, (_, i) => ({
+    index: i,
+    sourceName: headerNames[i] ?? `列${i + 1}`,
+    name: headerNames[i] ?? `列${i + 1}`,
+    inferredType: types[i] ?? 'text',
+    readOnly: t.readOnlyColumns,
+    conflict: false
+  }))
+}
+
+function onHeaderRowChange(t: EditTable, value: number): void {
+  if (Number.isNaN(value) || value < 0) return
+  t.headerRowIndex = value
+  recomputeColumns(t)
+  refreshConflicts()
 }
 
 /** 去重：重复名自动追加 _n，并标记冲突（原名保持原样不自动改，仅复制时去重） */
@@ -103,15 +177,19 @@ const conflictCount = computed(() => {
 })
 
 const totalTables = computed(() => edits.length)
+const selectedTables = computed(() => edits.filter((t) => t.include).length)
 
 function confirm(): void {
   refreshConflicts()
-  const files: AnalyzeImportPayload['files'] = edits.map((t) => ({
-    filePath: t.filePath,
-    tableIndex: t.tableIndex,
-    tableName: t.tableName.trim() || t.sourceName,
-    columns: t.columns.map((c) => ({ index: c.index, name: c.name.trim() || c.sourceName }))
-  }))
+  const files: AnalyzeImportPayload['files'] = edits
+    .filter((t) => t.include)
+    .map((t) => ({
+      filePath: t.filePath,
+      tableIndex: t.tableIndex,
+      tableName: t.tableName.trim() || t.sourceName,
+      columns: t.columns.map((c) => ({ index: c.index, name: c.name.trim() || c.sourceName })),
+      headerRowIndex: t.headerRowIndex
+    }))
   props.onConfirm(files)
 }
 
@@ -126,7 +204,7 @@ const typeColor: Record<string, string> = {
 <template>
   <div class="max-h-[72vh] w-full max-w-[90vw] overflow-auto text-sm">
     <p class="mb-3 text-xs text-[var(--c-text-2)]">
-      为每个表确认表名与列名（原名 → 新名）。重名自动追加序号并高亮，确认后一次写入会话数据库，可在 SQL 中跨表查询。
+      勾选要导入的表，为每个表确认表名与列名（原名 → 新名）。Excel/CSV 可指定表头行（第一行不一定是表头）。重名自动追加序号并高亮，确认后一次写入会话数据库，可在 SQL 中跨表查询。
     </p>
 
     <!-- 探测失败的文件 -->
@@ -143,21 +221,41 @@ const typeColor: Record<string, string> = {
         {{ fi + 1 }}. {{ f.fileName }} · {{ f.tables.length }} 张表
       </div>
       <div v-if="f.errors.length === 0" class="p-3">
-        <div v-for="t in edits.filter((e) => e.fileIndex === fi)" :key="t.tableIndex" class="mb-3 last:mb-0">
-          <!-- 表名 -->
+        <div v-for="t in edits.filter((e) => e.fileIndex === fi)" :key="t.tableIndex" class="mb-3 last:mb-0" :class="{ 'opacity-50': !t.include }">
+          <!-- 表名 + 勾选 + 表头行 -->
           <div class="mb-1.5 flex items-center gap-2">
+            <label class="flex items-center gap-1 text-xs" :title="t.include ? '取消勾选则不导入该表' : '勾选后导入该表'">
+              <input v-model="t.include" type="checkbox" class="accent-[var(--c-primary)]" />
+              导入
+            </label>
             <span class="w-16 shrink-0 text-xs text-[var(--c-text-2)]">表名</span>
             <span class="rounded bg-[var(--c-bg)] px-2 py-0.5 text-xs text-[var(--c-text-2)] line-through decoration-[var(--c-border-strong)]">{{ t.sourceName }}</span>
             <span class="text-xs text-[var(--c-border-strong)]">→</span>
             <input
               v-model="t.tableName"
               type="text"
-              class="w-56 rounded border bg-[var(--c-surface)] px-2 py-1 text-xs outline-none focus:border-sky-500"
+              :disabled="!t.include"
+              class="w-56 rounded border bg-[var(--c-surface)] px-2 py-1 text-xs outline-none focus:border-sky-500 disabled:bg-[var(--c-bg)] disabled:text-[var(--c-text-3)]"
               :class="t.conflict ? 'border-[var(--c-danger)]' : 'border-[var(--c-border-strong)]'"
             />
             <span v-if="t.conflict" class="text-xs text-[var(--c-danger)]" title="与已有表重名，已自动加序号">⚠ 重名</span>
             <span class="text-xs text-[var(--c-text-2)]">
               <template v-if="t.rowCount !== null">{{ t.rowCount }} 行 · </template>{{ t.columns.length }} 列
+            </span>
+            <span
+              v-if="(t.sourceKind === 'excel' || t.sourceKind === 'delimited') && !t.readOnlyColumns"
+              class="ml-auto flex items-center gap-1 text-xs text-[var(--c-text-2)]"
+            >
+              表头行
+              <input
+                type="number"
+                min="0"
+                :max="t.sampleRows.length"
+                class="w-12 rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-1 py-0.5 text-xs outline-none focus:border-sky-500"
+                :value="t.headerRowIndex"
+                @change="(e) => onHeaderRowChange(t, Number((e.target as HTMLInputElement).value))"
+              />
+              （0 = 第 1 行）
             </span>
             <span v-if="t.readOnlyColumns" class="ml-auto rounded bg-[var(--c-bg)] px-1.5 py-0.5 text-[10px] text-[var(--c-text-2)]">列名只读</span>
           </div>
@@ -204,7 +302,7 @@ const typeColor: Record<string, string> = {
     <!-- 底部 -->
     <div class="flex items-center justify-between border-t border-[var(--c-border)] pt-3">
       <div class="text-xs text-[var(--c-text-2)]">
-        共 {{ totalTables }} 张表
+        已选 {{ selectedTables }} / 共 {{ totalTables }} 张表
         <span v-if="conflictCount.tables > 0 || conflictCount.cols > 0" class="text-[var(--c-danger)]">
           · {{ conflictCount.tables }} 个表名、{{ conflictCount.cols }} 个列名已自动去重
         </span>
@@ -213,7 +311,7 @@ const typeColor: Record<string, string> = {
         <button class="rounded border border-[var(--c-border-strong)] px-3 py-1.5 text-sm hover:bg-[var(--c-surface-2)]" @click="props.onClose">
           取消
         </button>
-        <button class="rounded bg-[var(--c-primary)] px-3 py-1.5 text-sm text-[var(--c-on-primary)] hover:bg-[var(--c-primary-hover)]" @click="confirm">
+        <button class="rounded bg-[var(--c-primary)] px-3 py-1.5 text-sm text-[var(--c-on-primary)] hover:bg-[var(--c-primary-hover)]" :disabled="selectedTables === 0" @click="confirm">
           确认导入
         </button>
       </div>
