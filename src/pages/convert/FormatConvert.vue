@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useConvertStore } from '@/store/convert'
 import { useTaskStore } from '@/store/task'
 import { useFeedbackStore } from '@/store/feedback'
@@ -42,6 +42,38 @@ const currentCfg = computed(() =>
 
 const isExcel = computed(() => convert.workbook?.kind === 'xlsx' || convert.workbook?.kind === 'xls')
 const showCsvProtection = computed(() => convert.targetKind === 'csv')
+
+// 预览列宽拖拽：按列索引存宽度，序号列用 -1
+const colWidths = ref<Record<number, number>>({})
+const resizeState = ref<{ index: number; startX: number; startWidth: number } | null>(null)
+
+function onColResizeStart(e: MouseEvent, index: number): void {
+  // 未拖过时以当前列宽为基准
+  const th = (e.target as HTMLElement).parentElement?.parentElement as HTMLElement | null
+  const startWidth = colWidths.value[index] ?? th?.offsetWidth ?? 80
+  resizeState.value = { index, startX: e.clientX, startWidth }
+  e.preventDefault()
+  document.addEventListener('mousemove', onColResizeMove)
+  document.addEventListener('mouseup', onColResizeEnd)
+}
+
+function onColResizeMove(e: MouseEvent): void {
+  const state = resizeState.value
+  if (!state) return
+  const w = Math.max(40, state.startWidth + (e.clientX - state.startX))
+  colWidths.value = { ...colWidths.value, [state.index]: w }
+}
+
+function onColResizeEnd(): void {
+  resizeState.value = null
+  document.removeEventListener('mousemove', onColResizeMove)
+  document.removeEventListener('mouseup', onColResizeEnd)
+}
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousemove', onColResizeMove)
+  document.removeEventListener('mouseup', onColResizeEnd)
+})
 
 async function onPickSource(): Promise<void> {
   const res = await window.gigacenter.invoke<{ filePath: string | null }>('convert:choose-source-file')
@@ -350,35 +382,57 @@ async function onResetSession(): Promise<void> {
           </label>
         </div>
         <div v-for="n in currentInspect.notices" :key="n" class="mb-1 text-xs text-[var(--c-warn)]">⚠ {{ n }}</div>
-        <div class="overflow-auto">
-          <table class="w-full border-collapse text-xs">
+        <div class="max-h-96 overflow-auto">
+          <table class="w-full border-separate border-spacing-0 text-xs" style="table-layout: fixed">
+            <colgroup>
+              <col :style="colWidths[-1] ? { width: colWidths[-1] + 'px' } : {}" />
+              <col
+                v-for="col in currentInspect.columns"
+                :key="col.index"
+                :style="colWidths[col.index] ? { width: colWidths[col.index] + 'px' } : {}"
+              />
+            </colgroup>
             <thead>
-              <tr class="bg-[var(--c-surface-2)]">
-                <th class="border border-[var(--c-border)] px-2 py-1 text-left font-medium text-[var(--c-text-2)]">#</th>
+              <tr>
+                <th class="sticky top-0 z-10 border border-[var(--c-border)] bg-[var(--c-surface-2)] px-2 py-1 text-left font-medium text-[var(--c-text-2)]">
+                  <div class="relative">
+                    <span>#</span>
+                    <div
+                      class="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-[var(--c-primary)]"
+                      @mousedown.prevent="onColResizeStart($event, -1)"
+                    ></div>
+                  </div>
+                </th>
                 <th
                   v-for="col in currentInspect.columns"
                   :key="col.index"
-                  class="border border-[var(--c-border)] px-2 py-1 text-left"
+                  class="sticky top-0 z-10 border border-[var(--c-border)] bg-[var(--c-surface-2)] px-2 py-1 text-left"
                 >
-                  <div class="flex flex-col gap-0.5">
-                    <input
-                      class="w-32 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-[var(--c-text)] hover:border-[var(--c-border-strong)] focus:border-[var(--c-border-strong)] focus:bg-[var(--c-surface)]"
-                      :disabled="convert.locked"
-                      :value="currentCfg.columnNames[col.index] ?? col.header"
-                      :title="col.header"
-                      @change="(e) => convert.setColumnName(currentSheetId as number, col.index, (e.target as HTMLInputElement).value)"
-                    />
-                    <div class="flex items-center gap-1">
-                      <select
-                        class="rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-1 py-0.5 text-xs"
+                  <div class="relative">
+                    <div class="flex flex-col gap-0.5 pr-1">
+                      <input
+                        class="w-32 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-[var(--c-text)] hover:border-[var(--c-border-strong)] focus:border-[var(--c-border-strong)] focus:bg-[var(--c-surface)]"
                         :disabled="convert.locked"
-                        :value="currentCfg.columnTypes[col.index] ?? col.inferredType"
-                        @change="(e) => convert.setColumnType(currentSheetId as number, col.index, (e.target as HTMLSelectElement).value as never)"
-                      >
-                        <option v-for="(label, key) in typeLabels" :key="key" :value="key">{{ label }}</option>
-                      </select>
-                      <span v-if="col.needsConfirm" class="cursor-help text-[var(--c-warn)]" :title="col.warnings.join('\n')">⚠</span>
+                        :value="currentCfg.columnNames[col.index] ?? col.header"
+                        :title="col.header"
+                        @change="(e) => convert.setColumnName(currentSheetId as number, col.index, (e.target as HTMLInputElement).value)"
+                      />
+                      <div class="flex items-center gap-1">
+                        <select
+                          class="rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-1 py-0.5 text-xs"
+                          :disabled="convert.locked"
+                          :value="currentCfg.columnTypes[col.index] ?? col.inferredType"
+                          @change="(e) => convert.setColumnType(currentSheetId as number, col.index, (e.target as HTMLSelectElement).value as never)"
+                        >
+                          <option v-for="(label, key) in typeLabels" :key="key" :value="key">{{ label }}</option>
+                        </select>
+                        <span v-if="col.needsConfirm" class="cursor-help text-[var(--c-warn)]" :title="col.warnings.join('\n')">⚠</span>
+                      </div>
                     </div>
+                    <div
+                      class="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-[var(--c-primary)]"
+                      @mousedown.prevent="onColResizeStart($event, col.index)"
+                    ></div>
                   </div>
                 </th>
               </tr>
@@ -389,7 +443,7 @@ async function onResetSession(): Promise<void> {
                 <td
                   v-for="(cell, ci) in row"
                   :key="ci"
-                  class="max-w-48 truncate border border-[var(--c-border)] px-2 py-1"
+                  class="truncate border border-[var(--c-border)] px-2 py-1"
                   :title="cell ?? ''"
                 >
                   {{ cell ?? '' }}
