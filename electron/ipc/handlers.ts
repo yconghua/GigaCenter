@@ -152,7 +152,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return ok({ shown: true })
   })
 
-  // 打开指定目录（设置页路径项）：校验存在后用系统文件管理器打开
+  // 打开指定目录（设置页路径项）：校验存在后用系统文件管理器打开。
   ipcMain.handle(IPC_CHANNELS.openFolder, async (_e, folderPath: string) => {
     if (typeof folderPath !== 'string' || folderPath.length === 0) return fail('invalid_path', '路径无效')
     if (!fs.existsSync(folderPath)) return fail('not_found', '目录不存在')
@@ -161,7 +161,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return ok({ opened: true })
   })
 
-  // 在文件管理器中显示并选中文件/目录（诊断包导出后定位）
+  // 在文件管理器中显示并选中文件/目录（诊断包导出后定位）。
   ipcMain.handle(IPC_CHANNELS.showInFolder, (_e, itemPath: string) => {
     if (typeof itemPath !== 'string' || itemPath.length === 0) return fail('invalid_path', '路径无效')
     if (!fs.existsSync(itemPath)) return fail('not_found', '路径不存在')
@@ -171,7 +171,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
 
   // ---------- 配置 ----------
 
-  /** 应用主题：设置 themeSource 并把解析结果推给所有窗口（跟随系统档在系统切换时同样生效） */
+  /** 应用主题：设置 themeSource 并把实际解析的明暗结果推给所有窗口（跟随系统模式下，系统切换明暗时同样生效） */
   function applyTheme(prefs: AppPreferences): void {
     nativeTheme.themeSource = prefs.theme
     const resolved = nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
@@ -248,7 +248,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   )
 
   ipcMain.handle(IPC_CHANNELS.cancelTask, (_e, payload?: { taskId?: string }) => {
-    // 取消 = terminate 对应页面的 worker（连接丢弃，未提交事务自动回滚），再置任务为 cancelled
+    // 取消 = terminate 对应页面的 worker（连接丢弃，未提交事务自动回滚），再置任务为 cancelled。
     const taskId = payload?.taskId
     const task = taskId ? tasks.get(taskId) : null
     if (task?.page === 'analyze') terminateWorker('analyze')
@@ -259,13 +259,13 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return ok({ cancelled: cancelled.length })
   })
 
-  // 关闭窗口：渲染进程自研确认框确认后调用
+  // 关闭窗口：渲染进程自研确认框确认后调用。
   ipcMain.handle(IPC_CHANNELS.confirmClose, () => {
     BrowserWindow.getAllWindows()[0]?.destroy()
     return ok(null)
   })
 
-  // 拖拽授权：仅用户真实拖入的路径可授权（主进程校验存在性后加入白名单）
+  // 拖拽授权：仅用户真实拖入的路径可授权（主进程校验存在性后加入白名单）。
   ipcMain.handle(IPC_CHANNELS.authorizeDrop, (_e, payload: { paths: string[] }) => {
     for (const p of payload?.paths ?? []) {
       if (typeof p === 'string' && p.length > 0 && fs.existsSync(p)) {
@@ -282,7 +282,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.convertInspectSheet, async (_e, payload: InspectSheetPayload) => {
-    // 表头行/公式/合并模式变化：按参数重采样目标工作表，覆盖会话预览，导出预览同步生效
+    // 表头行/公式/合并模式变化：按参数重采样目标工作表，覆盖会话预览，导出预览同步生效。
     const session = convertState.session
     if (!session || session.filePath !== payload.filePath) {
       return fail('SOURCE_NOT_PARSED', '请先解析源文件再调整预览')
@@ -348,7 +348,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       }
       tasks.awaitConfirm(taskId)
       // 兜底：前端确认框关闭/断连时任务卡在 awaiting_confirm 会锁死本页任务，
-      // 30 秒后自动终结（前端再确认会得到 SNAPSHOT_NOT_FOUND 提示重新预览）
+      // 30 秒后自动终结（前端再确认会得到 SNAPSHOT_NOT_FOUND 提示重新预览）。
       setTimeout(() => {
         const current = tasks.get(taskId)
         if (current && current.status === 'awaiting_confirm') {
@@ -385,7 +385,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     }
     convertState.snapshots.delete(payload.taskId)
 
-    // 目标文件冲突处理
+    // 目标文件冲突处理。
     const finalNames: Record<number, string> = {}
     for (const [sheetId, fileName] of Object.entries(snapshot.fileNames)) {
       const full = path.join(snapshot.config.outputDir, fileName)
@@ -408,13 +408,14 @@ export function registerIpcHandlers(deps: IpcDeps): void {
         sheetFileNames: finalNames,
         sheetNames: snapshot.sheetNames,
         sheetTableNames: snapshot.tableNames,
-        // 每次导出实时读取开关，改动无需重启生效
+        // 每次导出实时读取开关，改动无需重启生效。
         longPathSupport: config.getPreferences().longPathSupport
       }
     })
     convertState.worker = worker
     convertState.workerTaskId = taskId
 
+    // worker 消息协议：progress 上报进度，done/cancelled/error 终结任务并复位 worker 引用。
     worker.on('message', (msg: Record<string, unknown>) => {
       if (msg.progress && typeof msg.progress === 'object') {
         const p = msg.progress as { done: number; total: number; currentStep: string; message: string }
@@ -446,7 +447,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.convertResetSession, () => {
-    // 重置 = 开启新会话：丢弃当前解析缓存与预览快照，前端同时清空页面状态
+    // 重置 = 开启新会话：丢弃当前解析缓存与预览快照，前端同时清空页面状态。
     convertState.session = null
     convertState.snapshots.clear()
     return ok(null)
@@ -463,7 +464,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       return ok({ filePath: null })
     }
     const filePath = result.filePaths[0]
-    // 记住本次打开目录，下次默认定位到同一文件夹
+    // 记住本次打开目录，下次默认定位到同一文件夹。
     config.setPreferences({ lastOpenDirectory: path.dirname(filePath) })
     whitelist.authorizeFile(filePath)
     return ok({ filePath })
@@ -607,7 +608,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     if (result.canceled || result.filePaths.length === 0) {
       return ok<AnalyzeChooseFilesResult>({ filePaths: [] })
     }
-    // 记住本次打开目录（多选取第一个文件所在目录）
+    // 记住本次打开目录（多选取第一个文件所在目录）。
     config.setPreferences({ lastOpenDirectory: path.dirname(result.filePaths[0]) })
     for (const fp of result.filePaths) deps.whitelist.authorize(path.dirname(fp))
     return ok<AnalyzeChooseFilesResult>({ filePaths: result.filePaths })
@@ -672,7 +673,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       ]
     })
     if (result.canceled || !result.filePath) return ok({ path: null })
-    // 记住本次导出目录，下次默认定位到同一文件夹
+    // 记住本次导出目录，下次默认定位到同一文件夹。
     config.setPreferences({ lastExportDirectory: path.dirname(result.filePath) })
     whitelist.authorize(path.dirname(result.filePath))
     return ok({ path: result.filePath })
@@ -746,7 +747,7 @@ async function runParseTask(
   if (!['.csv', '.txt', '.xlsx', '.xls'].includes(ext)) {
     return fail('UNSUPPORTED_TYPE', `不支持的文件类型：${ext}`)
   }
-  // .xls 为旧版 OLE2 二进制格式，exceljs 仅支持 .xlsx（zip 封装），直接明确提示避免长时间无响应
+  // .xls 为旧版 OLE2 二进制格式，exceljs 仅支持 .xlsx（zip 封装），直接明确提示避免长时间无响应。
   if (ext === '.xls') {
     return fail('UNSUPPORTED_XLS', '不支持 .xls 旧格式，请用 Excel/WPS 将文件另存为 .xlsx 后导入')
   }
@@ -783,7 +784,7 @@ async function runParseTask(
       }
       if (msg.ok) {
         const parsed = msg.result as ParsedSource
-        // 解析成功 = 建立/覆盖当前会话（异路径解析自动丢弃旧会话缓存）
+        // 解析成功 = 建立/覆盖当前会话（异路径解析自动丢弃旧会话缓存）。
         convertState.session = { filePath, parsed }
         tasks.done(taskId, '解析完成')
         logger.info('[event=file-parse-done]', {
@@ -824,7 +825,7 @@ function renamedPath(fileName: string): string {
   return path.join(path.dirname(fileName), candidate)
 }
 
-// 探针：worker 内 better-sqlite3 查询（框架阶段验证用，正式功能开发时移除）
+// 探针：worker 内 better-sqlite3 查询（框架阶段验证用，正式功能开发时移除）。
 let slowWorker: Worker | null = null
 let slowWorkerStartedAt = 0
 
@@ -902,7 +903,7 @@ function runImportTask(payload: AnalyzeImportPayload, deps: IpcDeps): Promise<Re
       return
     }
     const importStartedAt = Date.now()
-    // 按文件分组统计元数据（一个文件可含多张表）
+    // 按文件分组统计元数据（一个文件可含多张表）。
     const fileMetaMap = new Map<string, { fileName: string; fileSize: number; tables: number }>()
     for (const f of payload.files) {
       const entry = fileMetaMap.get(f.filePath) ?? { fileName: path.basename(f.filePath), fileSize: 0, tables: 0 }
@@ -998,7 +999,7 @@ function runQueryTask(payload: AnalyzeRunQueryPayload, deps: IpcDeps): Promise<R
       workerData: {
         dbPath: session.dbPath,
         statements,
-        // 执行层上限：不传 limit 时默认 10 万行，防止 SELECT * 全量拖垮内存
+        // 执行层上限：不传 limit 时默认 10 万行，防止 SELECT * 全量拖垮内存。
         limit: payload.limit ?? 100000,
         readonly: !allowModify
       }
@@ -1089,7 +1090,7 @@ function runExportTask(payload: AnalyzeExportPayload, deps: IpcDeps): Promise<Re
         targetKind: payload.targetKind,
         outputPath: payload.outputPath,
         limit: payload.limit ?? 1000000,
-        // 每次导出实时读取开关，改动无需重启生效
+        // 每次导出实时读取开关，改动无需重启生效。
         longPathSupport: deps.config.getPreferences().longPathSupport
       }
     })

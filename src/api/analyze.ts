@@ -11,7 +11,7 @@ import type {
   Result
 } from '@shared/ipc-types'
 
-/** 数据分析 IPC 封装：组件不直接调 ipcRenderer */
+/** 数据分析 IPC 封装：前端组件不直接调用 ipcRenderer，统一经此发起 analyze:* 通道的会话、导入、查询与导出请求。 */
 
 export interface AnalyzeSessionInfo {
   sessionId: string

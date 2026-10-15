@@ -3,7 +3,7 @@ import { parse } from 'csv-parse'
 import iconv from 'iconv-lite'
 import { detectEncoding } from './encoding'
 
-/** CSV/TXT 流式解析：编码检测、分隔符探测、行数统计、前 N 行预览与类型推断采样 */
+/** CSV/TXT 流式解析：编码检测、分隔符探测、行数统计、前 50 行预览与类型推断采样 */
 
 export interface CsvParseResult {
   rowCount: number
@@ -37,6 +37,7 @@ function detectDelimiter(firstLine: string): string {
 
 export function parseCsvFile(filePath: string): Promise<CsvParseResult> {
   return new Promise((resolve, reject) => {
+    // 先读取文件头部 64KB，仅用于编码检测与分隔符探测，之后再流式解析全文件。
     const fd = openSync(filePath, 'r')
     const head = Buffer.alloc(64 * 1024)
     let headLen: number
@@ -48,7 +49,7 @@ export function parseCsvFile(filePath: string): Promise<CsvParseResult> {
     const headBuf = head.subarray(0, headLen)
     const { encoding, confidence } = detectEncoding(headBuf)
 
-    // 首行原文探测分隔符
+    // 按解码后的首行原文探测分隔符。
     const headText = iconv.decode(headBuf, encoding)
     const firstLineEnd = headText.indexOf('\n')
     const firstLine = (firstLineEnd >= 0 ? headText.slice(0, firstLineEnd) : headText).trimEnd()
@@ -67,6 +68,8 @@ export function parseCsvFile(filePath: string): Promise<CsvParseResult> {
         })
       )
 
+    // 逐行回调：空字符串归一为 null；列数取历史最大值；预览保留前 50 行，
+    // 类型推断采样先全收前 1000 行、之后每 5 行取 1 行，总量上限 6000。
     let rowCount = 0
     let colCount = 0
     const previewRows: (string | null)[][] = []

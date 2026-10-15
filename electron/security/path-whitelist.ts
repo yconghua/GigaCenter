@@ -2,10 +2,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { isPathInside } from '../core/path-utils'
 
-// 路径白名单：按规范化后的目录树授权，本次应用生命周期有效。
-// 导入/导出只允许用户通过对话框或拖拽选择的路径，主进程记录已授权路径，
-// 渲染进程传任意路径时校验是否在已授权集合内，不在则拒绝。
-// 符号链接/junction 解析后必须仍在授权根内，否则拒绝。
+// 路径白名单：按规范化后的目录树授权，仅在本次应用生命周期内有效。
+// 导入/导出只允许用户通过对话框或拖拽选择的路径；主进程记录已授权目录，
+// 渲染进程传来任意路径时先校验是否落在已授权集合内，不在则拒绝。
+// 符号链接/junction 经 realpath 解析后仍必须落在授权根内，否则拒绝。
 
 export class PathWhitelist {
   private roots: string[] = []
@@ -24,7 +24,7 @@ export class PathWhitelist {
     this.authorize(path.dirname(file))
   }
 
-  /** 判断路径是否在已授权范围内（父目录或文件本体） */
+  /** 判断路径是否落在已授权根目录内（文件路径按其父目录规范化后校验） */
   isAuthorized(p: string): boolean {
     const normalized = canonicalizePath(p)
     if (!normalized) return false
@@ -59,6 +59,7 @@ export function canonicalizePath(p: string): string {
   return normalizeCase(path.join(realParent, base))
 }
 
+// Windows 文件系统大小写不敏感，统一转小写，避免同一目录因大小写不同重复授权。
 function normalizeCase(p: string): string {
   const resolved = path.resolve(p)
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved

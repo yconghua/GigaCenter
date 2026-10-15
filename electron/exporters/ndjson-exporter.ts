@@ -44,6 +44,7 @@ export async function exportNdjsonFile(options: NdjsonExportOptions): Promise<vo
   if (!result.ok) throw new Error(result.error)
 }
 
+/** 单元格字符串按列类型转换为 MongoDB 可表达的 JSON 值；_id 列若为 24 位十六进制则包成 $oid。 */
 export function convertValue(v: string | null, type: ColumnType, name: string): unknown {
   if (v === null || v === '') return null
   if (type === 'integer' || type === 'real') {

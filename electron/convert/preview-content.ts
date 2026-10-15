@@ -41,7 +41,7 @@ export function buildExportPreviewContent(
   tableName: string,
   maxRows = 10
 ): ExportPreviewContentResult {
-  // 列名清洗：与 convert-worker 完全一致（用户改写值优先）
+  // 列名清洗规则与真实导出链路完全一致：用户改写值优先，未改写则用源表头。
   const used = new Set<string>()
   const cleanNames = inspect.columns.map((c, i) =>
     uniqueIdentifier(sanitizeIdentifier(sheet.columnNames[i] ?? c.header ?? `col_${i + 1}`), used)
@@ -70,7 +70,7 @@ export function buildExportPreviewContent(
     }
     content = lines.join('\n')
   } else if (config.targetKind === 'sqlite') {
-    // 真实产物为 .db，此处展示等价建表 + 插入语句供用户核对
+    // 真实产物为 .db 二进制文件，此处展示等价建表 + 插入语句供用户核对。
     const cols = columns.map((c) => `"${c.name.replace(/"/g, '""')}" ${SQLITE_TYPE[c.type]}`)
     const lines: string[] = [
       `-- GigaCenter 导出（SQLite .db，以下为等价语句）：${tableName}`,
@@ -83,7 +83,7 @@ export function buildExportPreviewContent(
     }
     content = lines.join('\n')
   } else {
-    // MySQL / PostgreSQL / SQL Server：与 exportSqlScript 同一套语句生成
+    // MySQL / PostgreSQL / SQL Server：语句生成复用与真实导出相同的 dialect 逻辑。
     const dialect = getDialect(config.targetKind)
     const cols = columns.map((c) => `${dialect.quote(c.name)} ${dialect.typeOf(c.type)}`).join(', ')
     const lines: string[] = [

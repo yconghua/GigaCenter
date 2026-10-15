@@ -17,7 +17,7 @@ const themeOptions: { value: AppPreferences['theme']; label: string; hint: strin
 
 async function onFontSizeChange(e: Event): Promise<void> {
   const v = Number((e.target as HTMLInputElement).value)
-  // 字号本地即时生效（主进程不推送字号变化，由设置页直接应用）
+  // 字号由设置页直接在前端即时应用（主进程不推送字号变化事件），再持久化到偏好
   applyFontScale(v)
   await setPref({ fontSize: v })
 }
@@ -77,6 +77,7 @@ async function onClearPreferences(): Promise<void> {
 }
 
 async function onShortcutChange(key: string, value: string): Promise<void> {
+  // 输入框清空时回落到该动作的默认快捷键（默认值即 key 本身）
   const shortcuts = { ...(prefs.value?.shortcuts ?? {}), [key]: value.trim() || key }
   await setPref({ shortcuts })
 }

@@ -14,9 +14,9 @@ export function isPathInside(p: string, root: string): boolean {
   return target === base || target.startsWith(base + path.sep)
 }
 
-// Windows 保留名（含带扩展名和带空格形式）
+// Windows 设备保留名（含带扩展名、带空格等变体形式）。
 const RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$/i
-// 非法字符：<>:"/\\|?* 与控制字符
+// 文件名非法字符：<>:"/\\|?* 与控制字符。
 const INVALID_CHARS = /[<>:"/\\|?*\x00-\x1f]/g
 
 /**
@@ -27,7 +27,7 @@ export function sanitizeFileName(name: string): string {
   let cleaned = name.replace(INVALID_CHARS, '_').trim()
   cleaned = cleaned.replace(/[. ]+$/, '')
   if (RESERVED_NAMES.test(cleaned)) cleaned = `_${cleaned}`
-  // 全部变成下划线（原名为纯非法字符）时回退
+  // 清洗后全部为下划线（原名为纯非法字符）时回退为默认名。
   if (!cleaned || !cleaned.replace(/_+/g, '')) cleaned = 'untitled'
   return cleaned
 }

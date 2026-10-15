@@ -43,12 +43,12 @@ const currentCfg = computed(() =>
 const isExcel = computed(() => convert.workbook?.kind === 'xlsx' || convert.workbook?.kind === 'xls')
 const showCsvProtection = computed(() => convert.targetKind === 'csv')
 
-// 预览列宽拖拽：按列索引存宽度，序号列用 -1
+// 预览表列宽拖拽：按列索引保存自定义宽度，左侧序号列用 -1 作为 key。
 const colWidths = ref<Record<number, number>>({})
 const resizeState = ref<{ index: number; startX: number; startWidth: number } | null>(null)
 
 function onColResizeStart(e: MouseEvent, index: number): void {
-  // 未拖过时以当前列宽为基准
+  // 未拖拽过时以当前渲染列宽为基准，避免起始位置跳变
   const th = (e.target as HTMLElement).parentElement?.parentElement as HTMLElement | null
   const startWidth = colWidths.value[index] ?? th?.offsetWidth ?? 80
   resizeState.value = { index, startX: e.clientX, startWidth }
@@ -86,7 +86,7 @@ async function parseFile(filePath: string): Promise<void> {
     convert.setParsed(res.value)
     currentSheetId.value = convert.workbook?.sheets[0]?.id ?? null
   }
-  // 解析失败提示由 task store 统一右下角 Toast（task-error 事件），此处不再重复提示
+  // 解析失败提示由 task store 统一以右下角 Toast 弹出（task-error 事件），此处不再重复提示
 }
 
 function onDragOver(e: DragEvent): void {
@@ -98,7 +98,7 @@ function onDrop(e: DragEvent): void {
   if (!file) return
   const p = window.gigacenter.filePathFor(file)
   if (!p) return
-  // 拖拽即用户选择：先授权父目录再解析（路径白名单要求）
+  // 拖拽即视为用户主动选择该文件：先授权其父目录再解析（主进程路径白名单要求）
   void window.gigacenter.invoke('app:authorize-drop', { paths: [p] }).then(() => parseFile(p))
 }
 
@@ -119,7 +119,7 @@ async function onReinspect(): Promise<void> {
     mergeMode: cfg.mergeMode
   })
   if (res.ok) {
-    // 保留用户已改的列类型
+    // 保留用户已手动修正的列类型，避免重新探测后被推断类型覆盖
     const prev = convert.inspects[currentSheetId.value]
     const kept: Record<number, string> = {}
     if (prev) {
@@ -135,7 +135,9 @@ async function onReinspect(): Promise<void> {
   }
 }
 
+// 先出导出预览（含目标文件清单与覆盖冲突），用户确认后才真正落盘
 async function onPreviewExport(): Promise<void> {
+  // 未选输出目录时先引导用户选择
   if (!convert.outputDir) {
     await onChooseOutputDir()
     if (!convert.outputDir) return
@@ -167,7 +169,7 @@ function pushPreviewModal(preview: ExportPreviewResult): void {
       },
       onClose: () => {
         feedback.closeDialog(dialogId, false)
-        // 关闭预览弹窗 = 放弃导出：终结 awaiting_confirm 任务，否则本页任务被锁死
+        // 关闭预览弹窗即放弃导出：必须终结 awaiting_confirm 任务，否则本页任务一直挂起、界面被锁死
         void task.cancel('convert')
       }
     }
@@ -185,7 +187,7 @@ async function runExport(): Promise<void> {
   }
 }
 
-// 导出结束：任务清空后解锁并提示
+// 导出结束（主进程任务清空）后解除配置锁定，并在文件夹中定位首个导出文件
 watch(
   () => task.convert,
   (cur) => {
@@ -282,7 +284,7 @@ async function onResetSession(): Promise<void> {
     </div>
 
     <template v-else>
-      <!-- Sheet 清单 -->
+      <!-- 工作表清单 -->
       <div class="mb-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
         <div class="mb-2 flex items-center justify-between text-sm">
           <div class="flex items-center gap-2">

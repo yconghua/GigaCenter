@@ -1,6 +1,6 @@
 import type { ColumnType, ExportTargetKind } from '../../shared/ipc-types'
 
-/** SQL 方言配置表：标识符引用、布尔/日期字面量、列类型、自增、批量插入、事务包裹 */
+/** SQL 方言配置表：标识符引用、布尔/日期字面量、列类型映射、自增列、批量插入与事务包裹。 */
 
 export interface Dialect {
   kind: Exclude<ExportTargetKind, 'csv' | 'sqlite' | 'mongodb'>
@@ -73,6 +73,7 @@ const DIALECTS: Record<Dialect['kind'], Dialect> = {
   }
 }
 
+/** 按目标数据库取方言配置；CSV/SQLite/MongoDB 不生成 SQL 脚本，调用即报错。 */
 export function getDialect(kind: ExportTargetKind): Dialect {
   const d = DIALECTS[kind as Dialect['kind']]
   if (!d) throw new Error(`目标类型 ${kind} 不生成 SQL 脚本`)

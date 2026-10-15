@@ -4,7 +4,7 @@ import type { ColumnType } from '../../shared/ipc-types'
 import { asyncAtomicWriteFile } from '../core/atomic-write'
 import { getDialect, sqlStringLiteral } from './dialect'
 
-/** SQL 导出：SQLite 生成 .db 文件（better-sqlite3 建库）；MySQL/PG/SQLServer 生成 .sql 脚本 */
+/** SQL 导出：目标为 SQLite 时用 better-sqlite3 直接生成 .db 文件；MySQL/PostgreSQL/SQLServer 时生成含建表与批量 INSERT 的 .sql 脚本；均经临时文件原子落盘。 */
 
 export interface ColumnDef {
   name: string
@@ -56,6 +56,7 @@ async function exportSqliteDb(options: SqlExportOptions): Promise<void> {
         }
       })
       let rows: (string | null)[][] = []
+      // 攒够 500 行走一次事务提交，减少事务提交次数
       await options.writeRows((row) => {
         rows.push(row)
         if (rows.length >= 500) {
@@ -120,6 +121,7 @@ async function exportSqlScript(options: SqlExportOptions): Promise<void> {
   if (!result.ok) throw new Error(result.error)
 }
 
+/** 按列类型生成目标方言的字面量：布尔/日期走方言映射；数字可解析则输出裸数字，否则按字符串转义；空值输出 NULL。 */
 export function literalFor(
   v: string | null,
   type: ColumnType,

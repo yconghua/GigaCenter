@@ -1,9 +1,9 @@
 import { isPathInside } from '../core/path-utils'
 
-// SQL 预检层：不做语法白名单，用户可写任何 SQL；
-// 只做资源、路径、扩展、写权限的安全限制。
-// 说明：这是字符串分析，不是 SQL 解析器，足够拦截常见越权；
-// 真正的写保护靠 SQLite 层 query_only=ON + 只读打开原始库两层兜底。
+// SQL 预检层：不做语法白名单，用户可写任意 SQL；
+// 只对资源、路径、扩展、写权限做安全限制。
+// 说明：这里是字符串级分析，不是 SQL 解析器，足以拦截常见越权；
+// 真正的写保护靠 SQLite 层 query_only=ON 与只读打开原始库两层兜底。
 
 export type StatementKind =
   | 'select'
@@ -37,6 +37,7 @@ export interface SqlCheckResult {
   statements: CheckedStatement[]
 }
 
+// PRAGMA 白名单：仅放行只读查询与性能调优类 PRAGMA；禁用可改路径或加载扩展的危险 PRAGMA。
 const ALLOWED_PRAGMAS = new Set([
   'table_info',
   'index_list',
@@ -131,7 +132,7 @@ export function splitStatements(sql: string): string[] {
   return statements
 }
 
-/** 识别语句类型（只看头部，字符串内内容不影响） */
+/** 按语句头部识别类型（仅取前 64 字符，字符串字面量内的关键词不影响判定） */
 export function identifyStatement(sql: string): StatementKind {
   const head = sql.trim().slice(0, 64).toUpperCase()
   if (head.startsWith('SELECT') || head.startsWith('WITH')) return 'select'
@@ -207,7 +208,7 @@ export function checkSql(sql: string, opts: SqlCheckOptions): SqlCheckResult {
         return deny(result, 'TX_NOT_ALLOWED', '只读模式下禁止事务语句')
       }
     }
-    // 可写模式（允许修改临时库开关打开）：写操作放行，前端在执行前弹确认
+    // 可写模式（允许修改临时库开关打开）：写操作放行，前端在执行前弹确认。
   }
   return result
 }

@@ -60,6 +60,7 @@ export class TempManager {
     this.removeDir(path.join(this.instanceRoot, 'tasks', taskId))
   }
 
+  /** 递归统计本实例 sessions 目录已占用的字节数，用于临时空间占用提示。 */
   sessionTempUsedBytes(): number {
     const sessions = path.join(this.instanceRoot, 'sessions')
     return this.dirSize(sessions)
@@ -91,6 +92,7 @@ export class TempManager {
     }
   }
 
+  /** 以 wx 独占方式创建本实例锁文件：正常运行期间由本进程持有，作为存活标记。 */
   private acquireLock(): void {
     try {
       const fd = fs.openSync(this.lockPath, 'wx')

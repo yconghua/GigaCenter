@@ -4,7 +4,7 @@ import iconv from 'iconv-lite'
 import { detectEncoding } from '../parsers/encoding'
 import { resolveSharedFormula } from './excel-refs'
 
-/** exceljs 体积大、加载约 8s，仅在真正导出 Excel 时惰性加载 */
+/** exceljs 体积大、加载约 8s，仅在真正需要读取 Excel 时惰性动态 import，且 Promise 缓存避免重复加载。 */
 let exceljsPromise: Promise<typeof import('exceljs')> | null = null
 async function getExcelJS(): Promise<typeof import('exceljs')> {
   if (!exceljsPromise) {
@@ -17,6 +17,7 @@ async function getExcelJS(): Promise<typeof import('exceljs')> {
 
 /** 流式行源：导出时重新读源文件，逐行回调（CSV 全流式；Excel 加载后逐行，不做全量收集） */
 
+/** 任务取消时抛出的错误，沿流式读取链路向上传播，供调用方识别并终止导出。 */
 export class CancelError extends Error {
   constructor() {
     super('任务已取消')
@@ -34,6 +35,7 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+/** 以首行为样本统计候选分隔符的出现次数，取最多者作为 CSV 分隔符。 */
 function detectDelimiter(firstLine: string): string {
   const candidates = [',', '\t', ';', '|']
   let best = ','
@@ -95,15 +97,15 @@ function streamCsv(
         return
       }
       const norm: (string | null)[] = row.length > 0 ? row.map((v) => (v === '' ? null : v)) : []
-      // headerRowIndex 为 0-based（0 即第一行表头），与预览/导入链路 buildColumns 一致
+      // headerRowIndex 为 0-based（0 即第一行表头），与预览/导入链路 buildColumns 的约定一致。
       if (index < opts.headerRowIndex) {
-        // 表头之前的行跳过
+        // 表头行之前的行直接跳过，不进入回调
       } else if (index === opts.headerRowIndex) {
         onHeader(norm)
       } else {
         onRow(norm)
         done++
-        if (done % 1000 === 0) onProgress?.(done, -1)
+        if (done % 1000 === 0) onProgress?.(done, -1) // total 传 -1 表示 CSV 总行数未知
       }
       index++
     })
@@ -129,8 +131,8 @@ function streamExcel(
       const ExcelJS = await getExcelJS()
       const wb = new ExcelJS.Workbook()
       await wb.xlsx.readFile(filePath)
-      // sheetId 为工作表数组下标（与 workbook.sheets 的 id 一致）；
-      // 不能 getWorksheet(id+1)：文件删除过工作表时 id 有空洞会取不到
+      // sheetId 为工作表数组下标（与 workbook.sheets 的顺序一致）；
+      // 不能用 getWorksheet(id+1)：文件删除过工作表时 id 有空洞会取不到。
       const ws = wb.worksheets[sheetId]
       if (!ws) {
         reject(new Error('工作表不存在'))
@@ -141,6 +143,7 @@ function streamExcel(
         master?: { row: number; col: number }
         range?: { tl: { row: number; col: number }; br: { row: number; col: number } }
       }>
+      // mergeMode=fill：把合并区域主格的值预填到区域内每个从属格，读单元格时查表替换。
       if (opts.mergeMode === 'fill') {
         for (const m of merges) {
           const master = m.master
@@ -172,13 +175,14 @@ function streamExcel(
           const resolved = opts.formulaMode === 'formula' ? resolveSharedFormula(ws, r, c, raw) : raw
           out.push(normalizeCell(resolved, opts.formulaMode))
         }
+        // 整行为空的行不输出，也不占用表头行/数据行计数。
         if (out.every((v) => v === null)) {
           index++
           continue
         }
-        // headerRowIndex 为 0-based（0 即第一行表头），与预览/导入链路 buildColumns 一致
+        // headerRowIndex 为 0-based（0 即第一行表头），与预览/导入链路 buildColumns 的约定一致。
         if (index < opts.headerRowIndex) {
-          // 表头之前的行跳过
+          // 表头行之前的行直接跳过，不进入回调
         } else if (index === opts.headerRowIndex) {
           onHeader(out)
         } else {
@@ -193,6 +197,7 @@ function streamExcel(
   })
 }
 
+/** 只读文件头 64KB：供编码探测与 CSV 分隔符猜测使用，不建立完整读流。 */
 function openHead(filePath: string): Buffer {
   const fd = openSync(filePath, 'r')
   const buf = Buffer.alloc(64 * 1024)
@@ -204,6 +209,8 @@ function openHead(filePath: string): Buffer {
   }
 }
 
+/** 单元格值归一：Date 转 ISO 文本、Buffer 转十六进制、公式按模式取公式文本或计算结果、
+ *  富文本与富值对象递归解包，最终统一输出为字符串或 null。 */
 function normalizeCell(value: unknown, formulaMode: 'value' | 'formula'): string | null {
   if (value === null || value === undefined) return null
   if (typeof value === 'object') {

@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 
 // 自研弹窗体系：Toast / 横幅 / 确认框 / 错误框 / 业务模态，全部由 Vue 组件实现，
-// 不调用浏览器 alert/confirm/prompt，不使用 Electron dialog 消息框。
-// 优先级：模态 > 确认框 > 错误框 > 横幅 > Toast。
-// 模态同一时刻只允许一个；Toast 最多 3 个。
+// 不调用浏览器 alert/confirm/prompt，也不使用 Electron dialog 消息框。
+// 展示层级：模态 > 确认框 > 错误框 > 横幅 > Toast。
+// 确认框/错误框/业务模态共用同一队列；Toast 最多保留 3 个，超出时最早的先丢弃。
 
 export interface ToastItem {
   id: number
@@ -67,7 +67,7 @@ export const useFeedbackStore = defineStore('feedback', {
     warning(message: string): void {
       this.toast('warning', message)
     },
-    // 错误 Toast：与其它级别一致，3 秒后自动消失
+    // 错误 Toast：与其它级别一致，3 秒后自动消失。
     errorToast(message: string): void {
       this.toast('error', message, true)
     },
@@ -75,7 +75,7 @@ export const useFeedbackStore = defineStore('feedback', {
       this.toasts = this.toasts.filter((t) => t.id !== id)
     },
 
-    // ---------- 横幅（每个页面最多 1 个） ----------
+    // ---------- 横幅（按类型去重，同类型只保留最新一条） ----------
     showBanner(kind: BannerItem['kind'], message: string): number {
       const id = nextId++
       this.banners = this.banners.filter((b) => b.kind === kind)
@@ -150,6 +150,7 @@ export const useFeedbackStore = defineStore('feedback', {
       return id
     },
     closeDialog(id: number, result: boolean): void {
+      // 先回调用户选择再移除弹窗，保证确认框/错误框能拿到结果
       const dialog = this.dialogs.find((d) => d.id === id)
       if (dialog) dialog.onResult?.(result)
       this.dialogs = this.dialogs.filter((d) => d.id !== id)

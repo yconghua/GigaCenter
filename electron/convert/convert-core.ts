@@ -18,7 +18,8 @@ import { sanitizeFileName, sanitizeIdentifier, uniqueIdentifier } from '../core/
 import { checkDiskSpace } from '../core/atomic-write'
 import { streamSheetRows } from './source-stream'
 
-/** 格式转换编排：解析源文件（worker 内调用）、构建预览、一致性检查、配置快照 */
+/** 导出链路编排模块：worker 内解析源文件（CSV/Excel）、构建列信息与类型推断、
+ *  按用户设置重采样工作表、生成导出前预览并做一致性检查、计算配置快照哈希。 */
 
 export interface ParsedSource {
   workbook: WorkbookInfo
@@ -49,6 +50,7 @@ export async function parseSourceFile(filePath: string): Promise<ParsedSource> {
       encodingConfidence: csv.encodingConfidence,
       sheets
     }
+    // 编码识别提示：置信度偏低或非 UTF-8 解码时，向预览追加一条用户可见提示
     const notices: string[] = []
     if (csv.encodingConfidence !== null && csv.encodingConfidence < 0.7) {
       notices.push(`编码识别置信度较低（${Math.round(csv.encodingConfidence * 100)}%），按 ${csv.encoding} 解码`)
@@ -97,7 +99,8 @@ export async function parseSourceFile(filePath: string): Promise<ParsedSource> {
   throw new Error(`不支持的文件类型：${ext}`)
 }
 
-/** 由采样行构建列信息：第 headerRowIndex 行为表头，其余为数据 */
+/** 由采样行构建列信息：第 headerRowIndex 行为表头行，其余为数据行；
+ *  列数取表头行与数据行的最大值，缺表头的列名回退为「列N」，并对每列采样值做类型推断。 */
 export function buildColumns(
   sampleRows: (string | null)[][],
   headerRowIndex = 0
@@ -125,8 +128,8 @@ export function buildColumns(
   return columns
 }
 
-/** 表头行/公式/合并模式调整后的工作表重采样：走与导出同一套流式读取，
- *  保证页面预览、导出预览与实际导出的列名一致。 */
+/** 表头行/公式/合并模式调整后的工作表重采样：走与实际导出同一套流式读取链路，
+ *  仅取前 50 行数据，保证页面预览、导出预览与真实导出的列名一致。 */
 export async function inspectSheetFile(
   filePath: string,
   sheetId: number,
@@ -148,7 +151,7 @@ export async function inspectSheetFile(
     () => false,
     () => undefined
   )
-  // header 前的行被流式跳过；header 与数据行合并为样本后按第 0 行重建列信息
+  // 表头行之前的行已被流式读取跳过；将表头行与数据行合并为样本后按第 0 行重建列信息。
   const sampleRows = header ? [header, ...rows] : rows
   return {
     sheetId,
@@ -159,7 +162,8 @@ export async function inspectSheetFile(
   }
 }
 
-/** 各目标方言支持的列类型（全集映射，无"不支持"类型，全类型可表达） */
+/** 各目标导出格式支持的列类型全集：text/integer/real/date/boolean 五种基础类型
+ *  在所有目标方言下均可表达，不存在目标库不支持的类型。 */
 const SUPPORTED_TYPES: Record<ExportTargetKind, ColumnType[]> = {
   csv: ['text', 'integer', 'real', 'date', 'boolean'],
   sqlite: ['text', 'integer', 'real', 'date', 'boolean'],
@@ -199,7 +203,7 @@ export function buildExportPreview(
   const baseName = path.basename(config.sourcePath, path.extname(config.sourcePath))
   const included = config.sheets.filter((s) => s.include)
   const multi = included.length > 1
-  const subDir = multi ? sanitizeFileName(baseName) : null
+  const subDir = multi ? sanitizeFileName(baseName) : null // 多工作表导出时，各文件归入以源文件名命名的子目录
   const ext = EXT_BY_KIND[config.targetKind]
 
   for (const sheet of included) {
@@ -260,7 +264,7 @@ export function buildExportPreview(
     })
   }
 
-  // 目标目录存在性 + 磁盘空间（按源文件大小 × 1.5 预估）
+  // 校验输出目录存在性，并按源文件大小 × 1.5 预估导出所需磁盘空间。
   try {
     statSync(config.outputDir)
   } catch {

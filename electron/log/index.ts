@@ -23,6 +23,7 @@ interface ElectronLogLike {
 
 let fileLog: ElectronLogLike | null | undefined
 
+// 惰性加载并缓存 electron-log：worker 线程内 require('electron-log') 会失败，捕获后回退 null。
 function getFileLog(): ElectronLogLike | null {
   if (fileLog !== undefined) return fileLog
   try {
@@ -44,7 +45,7 @@ export function initLogger(): void {
   l.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}'
 }
 
-/** 路径脱敏：只保留盘符 + \\...\\，末级也脱敏为 *** */
+/** 路径脱敏：只保留盘符，中间目录与末级文件名统一替换为 \\...\\***，不暴露目录结构与文件名 */
 export function sanitizePath(p: string): string {
   if (!p) return ''
   const drive = /^[A-Za-z]:/.exec(p)?.[0] ?? ''

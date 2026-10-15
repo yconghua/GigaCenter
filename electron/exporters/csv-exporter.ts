@@ -1,7 +1,7 @@
 import { createWriteStream } from 'node:fs'
 import { asyncAtomicWriteFile } from '../core/atomic-write'
 
-/** CSV 导出：UTF-8 BOM + 公式注入防护（= + - @ \t \r 前缀加 '），原子写 */
+/** CSV 导出：UTF-8 BOM 头、可选表头行、公式注入防护与单元格转义；经临时文件原子落盘。 */
 
 export interface CsvExportOptions {
   outputPath: string
@@ -17,8 +17,7 @@ export async function exportCsvFile(options: CsvExportOptions): Promise<void> {
     const out = createWriteStream(tmp, { encoding: 'utf8' })
     const flush = (line: string): void => {
       if (!out.write(line)) {
-        // 背压：等待 drain（写满时暂停上游）
-        // 简化：Buffer 较大时由 Node 内部排队，流式场景下写入频率有限
+        // 背压简化处理：未等待 drain，依赖 Node 写缓冲内部排队；流式导出写入频率有限，暂不反压上游
       }
     }
     let cancelled = false

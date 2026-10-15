@@ -3,9 +3,10 @@ import { computed, reactive, watch } from 'vue'
 import type { AnalyzeImportPayload, ProbeFileResult } from '@shared/ipc-types'
 
 /**
- * 导入前预览命名模态：展示结构探测结果，允许对每个表重命名表名、对每一列重命名列名。
+ * 导入前预览命名模态：展示结构探测结果，允许勾选要导入的表、重命名表名与列名；
+ * Excel/CSV 还可调整表头行位置，并据此在前端重算列名与推断类型。
  * 表名/列名冲突自动追加 _1/_2 并红色高亮；视图与 SQL dump 的列名不可改（只读展示）。
- * 确认后通过 onConfirm 回传完整映射（多文件多表一次提交）。
+ * 确认后通过 onConfirm 回传完整映射（多文件多表一次提交），由主进程写入会话数据库。
  */
 
 const props = defineProps<{
@@ -39,7 +40,7 @@ interface EditTable {
   headerRowIndex: number
   /** 源文件类型（决定是否显示表头行选择） */
   sourceKind?: 'excel' | 'delimited' | 'other'
-  /** 表头行之后的原始数据样本（探测时取前 100 行），用于调整表头行时重算列 */
+  /** 探测时取的前 100 行原始数据样本（含表头候选行），用于调整表头行后在前端重算列名与类型 */
   sampleRows: (string | null)[][]
   /** 探测时的表头名（第 1 行），表头行 = 0 时使用 */
   probeHeaderNames: string[]
@@ -79,7 +80,7 @@ for (let fi = 0; fi < props.files.length; fi++) {
   }
 }
 
-/** 与主进程 inferColumnTypes 相同的类型推断（简化前端重算用） */
+/** 与主进程 inferColumnTypes 对齐的类型推断：整数 → 实数 → 布尔依次判定，其余按文本；空值不计入判定 */
 function inferTypes(samples: (string | null)[][]): string[] {
   if (samples.length === 0) return []
   const n = Math.max(...samples.map((r) => r.length), 0)
@@ -106,7 +107,7 @@ function inferTypes(samples: (string | null)[][]): string[] {
   return types
 }
 
-/** 调整表头行后重算该表列名与类型（基于探测时的数据样本） */
+/** 调整表头行后重算该表列名与推断类型：表头行取样本对应行，数据行取其后部分；空列名补"列N"。 */
 function recomputeColumns(t: EditTable): void {
   const h = Math.max(0, Math.min(t.headerRowIndex, t.sampleRows.length))
   t.headerRowIndex = h
@@ -138,7 +139,7 @@ function onHeaderRowChange(t: EditTable, value: number): void {
   refreshConflicts()
 }
 
-/** 去重：重复名自动追加 _n，并标记冲突（原名保持原样不自动改，仅复制时去重） */
+/** 按使用顺序去重：与已用名（不区分大小写）冲突时自动追加 _n 序号，并返回冲突标记；供 refreshConflicts 实时重算表名/列名。 */
 function uniqueName(base: string, used: Set<string>): { name: string; conflict: boolean } {
   let candidate = base
   let n = 1
@@ -168,6 +169,7 @@ function refreshConflicts(): void {
   }
 }
 
+// 深度监听命名编辑：任一表名/列名变化即实时重算冲突；名称收敛后重复触发不再改名
 watch(edits, () => refreshConflicts(), { deep: true })
 
 const conflictCount = computed(() => {
@@ -179,6 +181,7 @@ const conflictCount = computed(() => {
 const totalTables = computed(() => edits.length)
 const selectedTables = computed(() => edits.filter((t) => t.include).length)
 
+// 确认导入：仅提交勾选的表，空名回退为源名，一次性回传多文件多表的列名映射
 function confirm(): void {
   refreshConflicts()
   const files: AnalyzeImportPayload['files'] = edits

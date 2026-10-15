@@ -9,7 +9,7 @@ import type {
   AnalyzePreviewResult
 } from '../../shared/ipc-types'
 
-/** 数据分析元数据与导出辅助：表/视图/索引/触发器对象树、表结构、前 50 行预览。 */
+/** 数据分析元数据查询与查询结果导出：表/视图/索引/触发器对象树、表结构、前 50 行预览，以及 SQL 查询结果流式导出为 CSV/JSON/SQL 脚本。 */
 
 export function listObjects(db: Database.Database): AnalyzeTableInfo[] {
   const rows = db
@@ -105,7 +105,7 @@ export function previewTable(db: Database.Database, tableName: string): AnalyzeP
   }
 }
 
-/** 解析 EXPLAIN QUERY PLAN 文本为树形结构 */
+/** 解析 EXPLAIN QUERY PLAN 输出文本：按行首缩进判定节点层级，用栈还原父子关系。 */
 export function parseExplainPlan(raw: string): Array<{ detail: string; children: Array<{ detail: string }> }> {
   const lines = raw.split('\n').filter((l) => l.trim())
   const roots: Array<{ detail: string; children: Array<{ detail: string }> }> = []
@@ -125,7 +125,7 @@ export function parseExplainPlan(raw: string): Array<{ detail: string; children:
   return roots
 }
 
-/** 查询结果导出：走主进程/worker 流式写文件（复用原子写语义），支持取消检查 */
+/** 查询结果导出：逐行流式写入临时文件，结束后原子替换为目标文件；逐行检查取消标志，达到 limit 即停止。返回实际导出行数。 */
 export async function exportQueryResult(
   db: Database.Database,
   sql: string,
@@ -138,11 +138,13 @@ export async function exportQueryResult(
   const stmt = db.prepare(sql)
   const cols = stmt.columns().map((c) => c.name)
   const rows = stmt.iterate() as IterableIterator<Record<string, unknown>>
+  // 临时文件名带进程号与时间戳，避免并发导出同名文件互相覆盖
   const tmp = `${outputPath}.tmp-${process.pid}-${Date.now()}`
   const fd = fs.openSync(tmp, 'w')
   let count = 0
   try {
     if (targetKind === 'csv') {
+      // 先写 UTF-8 BOM 与表头行，保证 Excel 直接打开 CSV 不乱码
       fs.writeSync(fd, '\uFEFF' + cols.map(escapeCsv).join(',') + '\r\n')
       for (const row of rows) {
         if (isCancelled?.()) throw new Error('导出已取消')
@@ -162,7 +164,7 @@ export async function exportQueryResult(
       }
       fs.writeSync(fd, '\n]\n')
     } else {
-      // sql
+      // 导出为 SQL 脚本：先建结果表，逐行 INSERT，最后 COMMIT
       fs.writeSync(fd, `CREATE TABLE result (${cols.map((c) => `"${c.replace(/"/g, '""')}" TEXT`).join(', ')});\n`)
       fs.writeSync(fd, 'BEGIN;\n')
       for (const row of rows) {
@@ -181,7 +183,7 @@ export async function exportQueryResult(
     throw err
   }
   fs.closeSync(fd)
-  // 原子替换（Windows 目标存在时先删再 rename）
+  // 原子替换为目标文件：Windows 下 rename 不能覆盖已存在文件，先删除目标再改名
   if (fs.existsSync(outputPath)) fs.rmSync(outputPath)
   fs.renameSync(tmp, outputPath)
   logger.debug('query result exported', { targetKind, rows: count, ms: Date.now() - t0, path: path.basename(outputPath) })
@@ -195,6 +197,7 @@ function stringifyCell(v: unknown): string | null {
   return String(v)
 }
 
+/** CSV 单元格转义：空值输出空串；以 = + - @ 等开头时前加单引号防公式注入；含逗号/引号/换行时用双引号包裹，内部引号 doubled。 */
 function escapeCsv(v: string | null): string {
   if (v === null) return ''
   if (/^[=+\-@\t\r]/.test(v)) v = `'${v}`

@@ -8,10 +8,10 @@ import { exportSqlFile } from '../exporters/sql-exporter'
 import { exportNdjsonFile } from '../exporters/ndjson-exporter'
 import { sanitizeIdentifier, uniqueIdentifier, withLongPath } from '../core/path-utils'
 
-/** 导出 worker：按主进程传入的配置快照流式转换落盘。
- *  数据流：源流式推行 -> 队列 -> 导出器逐行消费，内存只保留积压。
- *  取消 = 检查标志后抛 CancelError 退出（连接丢弃，未提交事务自动回滚）。
- *  长路径开关每次创建 worker 时由主进程实时传入，无需重启生效。 */
+/** 转换导出 worker：按主进程传入的配置快照，把源工作表流式转换为 CSV / SQL / NDJSON 文件落盘。
+ *  数据流：源端流式推入行数据 → 内存队列 → 导出器逐行消费，内存中只保留未消费的积压行。
+ *  取消：检测到取消标志后抛 CancelError 退出（连接直接丢弃，未提交事务自动回滚）。
+ *  长路径开关随每次创建 worker 由主进程实时传入，无需重启即可生效。 */
 
 interface ConvertTaskData {
   config: ExportConfig
@@ -21,7 +21,7 @@ interface ConvertTaskData {
   longPathSupport: boolean
 }
 
-let cancelled = false
+let cancelled = false // 取消标志：主进程发来 {cancel:true} 消息时置位
 
 parentPort?.on('message', (m: unknown) => {
   if (m && typeof m === 'object' && (m as { cancel?: boolean }).cancel) cancelled = true
@@ -85,7 +85,7 @@ async function exportSheet(
     wakeup?.()
   }
 
-  // 队列消费者：源推行、导出器消费，sourceEnded 后排空退出；任意时刻可被取消
+  // 队列消费者：源端推入行进入 rowQueue，导出器逐行 emit；sourceEnded 后排空队列退出，循环任意位置都可能抛 CancelError。
   const consume = async (emit: (row: (string | null)[]) => void): Promise<void> => {
     for (;;) {
       if (cancelled) throw new CancelError()
@@ -96,7 +96,7 @@ async function exportSheet(
       if (sourceEnded) break
       await new Promise<void>((r) => {
         wakeup = r
-        // 等待期间源可能已结束/被取消，立即继续而非死等
+        // 挂起等待期间源可能已结束或任务已取消，醒来前先判断条件，避免死等。
         if (sourceEnded || cancelled) r()
       })
       wakeup = null
@@ -125,7 +125,7 @@ async function exportSheet(
 
   await ready
 
-  // 列名：用户改写值优先，与预览阶段同一套清洗算法，结果一致
+  // 列名清洗：用户改写值优先于表头原值；清洗与去重算法与预览阶段一致，保证导出表结构与预览相同。
   const used = new Set<string>()
   const cleanNames = header.map((h, i) =>
     uniqueIdentifier(sanitizeIdentifier(sheet.columnNames[i] ?? h ?? `col_${i + 1}`), used)

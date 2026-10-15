@@ -1,4 +1,4 @@
-/** Excel A1 样式单元格引用与共享公式解析：列号换算、公式按行列偏移平移 */
+/** Excel A1 样式单元格引用与共享公式解析：列字母与列号互转、相对引用公式按行列偏移平移、共享公式从属格还原。 */
 
 /** 列字母转列号（A=1, K=11） */
 export function colToNum(col: string): number {
@@ -18,12 +18,14 @@ export function numToCol(n: number): string {
   return s
 }
 
-/** 公式中恰好"3字母+数字"的函数名（LOG10），避免把函数名当单元格引用平移 */
+/** 含数字后缀的函数名前导字母（如 LOG10 的 LOG）：平移正则会把「字母+数字」整体匹配为单元格引用，
+ *  命中该集合时原样保留，避免把函数名误当引用平移。 */
 const FN_WITH_DIGITS = new Set(['LOG'])
 
 /**
- * 把公式文本中的相对单元格引用按行列偏移平移（绝对 $ 引用不动）。
+ * 把公式文本中的相对单元格引用按行列偏移平移（带 $ 的绝对引用不动）。
  * 示例：master="I4*J4" 平移到下一行 => "I5*J5"；"$I4" => "$I5"；"I$4" 行不变。
+ * 平移后列超出 1~16384 范围、或行号小于 1 时，该引用保持原样不动。
  */
 export function shiftFormula(formula: string, dRow: number, dCol: number): string {
   if (dRow === 0 && dCol === 0) return formula

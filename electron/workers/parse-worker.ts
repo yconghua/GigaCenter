@@ -1,7 +1,7 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import { parseSourceFile } from '../convert/convert-core'
 
-/** 解析 worker：Sheet 清单 + 前 50 行 + 类型推断采样（重任务，可 terminate 取消） */
+/** 解析 worker：产出源文件的工作表清单、前 50 行数据与类型推断采样。属重计算任务，由主进程通过 worker.terminate() 取消。 */
 
 async function main(): Promise<void> {
   const { filePath } = workerData as { filePath: string }

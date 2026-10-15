@@ -5,7 +5,7 @@ const feedback = useFeedbackStore()
 </script>
 
 <template>
-  <!-- Toast：右下角，最多 3 个；全部自动消失，手动 ✕ 仅保留为兜底（autoDismiss=false 时显示） -->
+  <!-- Toast 通知：固定右下角堆叠，由 feedback store 驱动；默认自动消失，仅 autoDismiss=false 的常驻 Toast 显示手动关闭按钮 -->
   <div class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2">
     <div
       v-for="toast in feedback.toasts"

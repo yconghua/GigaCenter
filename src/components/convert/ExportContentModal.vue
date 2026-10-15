@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import type { ExportPreviewContentResult, Result } from '@shared/ipc-types'
 
-/** 导出内容弹窗：展示某张表导出的前 N 条示例文本（SQL/CSV/NDJSON） */
+/** 导出内容弹窗：展示某张工作表导出的前 N 条示例文本（SQL/CSV/NDJSON），内容由父级通过 props.load 异步拉取。 */
 
 const props = defineProps<{
   load: () => Promise<Result<ExportPreviewContentResult>>
@@ -15,6 +15,7 @@ const totalRows = ref(0)
 const maxRows = ref(0)
 const copied = ref(false)
 
+// 弹窗挂载后异步拉取该工作表的导出预览：成功则填充文本与总行数，失败则记录错误信息。
 onMounted(async () => {
   const r = await props.load()
   loading.value = false
@@ -35,7 +36,7 @@ async function onCopy(): Promise<void> {
       copied.value = false
     }, 1500)
   } catch {
-    /* 剪贴板不可用时静默 */
+    /* 剪贴板 API 不可用（如非安全上下文）时静默失败，不弹错误提示 */
   }
 }
 </script>

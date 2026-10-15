@@ -1,6 +1,6 @@
 import type { ColumnType } from '../../shared/ipc-types'
 
-/** 类型推断：采样值按列推断类型，空值不计入分母，置信度阈值 0.95 */
+/** 类型推断：对一列采样值按正则归类为 integer/real/date/boolean，空值不计入分母；最佳类型占比低于 0.95 时提示人工确认。 */
 
 export interface InferResult {
   type: ColumnType
@@ -15,6 +15,7 @@ const BOOLEAN_RE = /^(true|false)$/i
 const DATE_RE = /^\d{4}[-/]\d{1,2}[-/]\d{1,2}([ T]\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?)?$/
 const LONG_NUMBER_LIMIT = 18
 
+// 类型判定优先级：integer > real > date > boolean，计数并列时排在前者胜出
 const ORDER: ColumnType[] = ['integer', 'real', 'date', 'boolean']
 
 export function inferColumn(values: (string | null)[]): InferResult {
@@ -28,7 +29,7 @@ export function inferColumn(values: (string | null)[]): InferResult {
   let leadingZeroSeen = false
 
   for (const v of nonEmpty) {
-    if (v.length > 1 && /^0\d+$/.test(v)) leadingZeroSeen = true
+    if (v.length > 1 && /^0\d+$/.test(v)) leadingZeroSeen = true  // 出现前导零（如 007），后续强制按文本保留
     if (BOOLEAN_RE.test(v)) {
       count.boolean++
       continue

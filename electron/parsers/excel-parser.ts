@@ -12,8 +12,8 @@ async function getExcelJS(): Promise<typeof import('exceljs')> {
   return exceljsPromise
 }
 
-/** Excel 读取：Sheet 元数据 + 前 50 行预览 + 类型推断采样。
- *  普通加载（含 merges/formulas 元信息）；超大文件由行数预警兜底（M4 补流式）。 */
+/** Excel 读取：工作表元数据 + 前 50 行预览 + 类型推断采样。
+ *  普通加载（含合并单元格/公式元信息）；超大文件由行数预警兜底（M4 补流式）。 */
 
 export interface ExcelSheetMeta {
   id: number
@@ -65,13 +65,14 @@ function readSheetRows(
   meta: ExcelSheetMeta,
   opts: ExcelSheetReadOptions
 ): ExcelSheetReadResult {
-  // meta.id 为工作表数组下标；不能 getWorksheet(id+1)：文件删除过工作表时 id 有空洞会取不到
+  // meta.id 为工作表数组下标；不能 getWorksheet(id+1)：文件删除过工作表时 id 有空洞会取不到。
   const ws = wb.worksheets[meta.id]
   const notices: string[] = []
   if (!ws) {
     return { meta, previewRows: [], sampleRows: [], notices: ['工作表不存在'] }
   }
 
+  // mergeMode=fill 时，把合并区域主单元格的值预填到区域内所有非主单元格，读取时优先取映射值。
   const mergeMap = new Map<string, unknown>()
   const merges = (ws.model.merges ?? []) as Array<{
     master?: { row: number; col: number }
@@ -108,6 +109,7 @@ function readSheetRows(
       const raw = mergedVal !== undefined ? mergedVal : cell.value
       if (typeof raw === 'object' && raw !== null && ('formula' in raw || 'sharedFormula' in raw)) hasFormulas = true
       if (cell.note) hasNotes = true
+      // formula 模式下，共享公式需按当前单元格坐标平移相对引用后，再输出公式文本。
       const resolved = opts.formulaMode === 'formula' ? resolveSharedFormula(ws, r, c, raw) : raw
       out.push(normalizeCell(resolved, opts.formulaMode))
     }
@@ -127,6 +129,8 @@ function readSheetRows(
   return { meta, previewRows, sampleRows, notices }
 }
 
+// 把 exceljs 单元格值归一为可入库的字符串或 null：日期转本地时间格式、Buffer 转 hex、
+// 公式按模式取公式文本或计算值，富文本/超链接/错误对象各自提取，嵌套对象递归展开。
 function normalizeCell(value: unknown, formulaMode: 'value' | 'formula'): string | null {
   if (value === null || value === undefined) return null
   if (typeof value === 'object') {

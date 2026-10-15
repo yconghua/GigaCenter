@@ -18,6 +18,7 @@ export function detectEncoding(buf: Buffer): EncodingResult {
       return { encoding: rule.encoding, confidence: 1 }
     }
   }
+  // jschardet 基于字节统计学习，最多取前 1MB 样本以兼顾识别准确性与开销。
   const sample = buf.subarray(0, Math.min(buf.length, 1 << 20))
   try {
     const detected = jschardet.detect(sample)
@@ -28,6 +29,8 @@ export function detectEncoding(buf: Buffer): EncodingResult {
   }
 }
 
+// jschardet 输出名归一为 iconv-lite 可用编码名：GB 系列统一到超集 gb18030，
+// UTF-16 不区分端序按 utf16le 处理，无法识别时兜底为 utf8。
 function normalizeEncoding(name: string): string {
   const n = (name ?? '').toLowerCase()
   if (n === 'gb2312' || n === 'gbk' || n === 'gb18030') return 'gb18030'

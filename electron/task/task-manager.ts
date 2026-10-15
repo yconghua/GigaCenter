@@ -2,17 +2,17 @@ import { EventBuffer } from './event-buffer'
 import type { TaskEvent, TaskEventType, TaskPage, TaskSnapshot, TaskStatus } from '../../shared/ipc-types'
 import { logger } from '../log'
 
-// 全局多任务模型：任务按 taskId 独立注册，可多个并存。
-// 每个页面（convert/analyze）同时只允许一个任务，页面之间并行。
-// 状态机：idle / running / awaiting_confirm / cancelling / done / failed / cancelled，phase 只做展示。
-// 事件经 EventBuffer 缓存（环形 2000），由 emit 回调推送到渲染进程。
+// 全局多任务模型：任务按 taskId 独立注册，多个任务可并存。
+// 同一页面（convert/analyze）同时只允许一个活跃任务，不同页面之间并行执行。
+// 任务状态机：idle / running / awaiting_confirm / cancelling / done / failed / cancelled；phase 仅用于前端展示，不参与状态判定。
+// 所有任务事件统一经 EventBuffer 缓存（环形容量 2000），再由 emit 回调推送到渲染进程。
 
 interface BeginOptions {
   taskId: string
   title: string
   page: TaskPage
   sessionId?: string
-  /** 任务详情（操作参数），随 task-begin/task-done/task-failed 写入日志 */
+  /** 任务详情（操作参数快照），随 task-begin/task-done/task-failed 事件写入日志。 */
   detail?: Record<string, unknown>
 }
 
@@ -29,18 +29,18 @@ export class TaskManager {
     this.emit = emit
   }
 
-  /** 全部活跃任务快照列表（前端初始化分桶用） */
+  /** 返回全部非终态任务的快照列表（拷贝），供前端初始化时按页面分桶。 */
   getActive(): TaskSnapshot[] {
     return [...this.tasks.values()].map((t) => ({ ...t }))
   }
 
-  /** 指定任务快照；不存在返回 null */
+  /** 返回指定任务的快照（拷贝）；任务不存在返回 null。 */
   get(taskId: string): TaskSnapshot | null {
     const t = this.tasks.get(taskId)
     return t ? { ...t } : null
   }
 
-  /** 页面是否已有活跃任务（同页互斥，跨页并行） */
+  /** 指定页面是否已有活跃任务：同页互斥，跨页可并行。 */
   isPageBusy(page: TaskPage): boolean {
     for (const t of this.tasks.values()) {
       if (t.page === page && isActive(t.status)) return true
@@ -48,7 +48,7 @@ export class TaskManager {
     return false
   }
 
-  /** 启动任务：同页已有活跃任务时返回 false */
+  /** 启动任务并置为 running；同页已有活跃任务时返回 false 拒绝启动。 */
   begin(options: BeginOptions): boolean {
     if (this.isPageBusy(options.page)) return false
     const now = Date.now()
@@ -72,6 +72,7 @@ export class TaskManager {
     return true
   }
 
+  /** 更新任务进度（phase/当前步骤/完成计数）并推送 task-progress 事件；任务已结束时静默忽略。 */
   update(
     taskId: string,
     phase: string,
@@ -96,6 +97,7 @@ export class TaskManager {
     })
   }
 
+  /** 追加一条警告并推送 task-warning 事件；任务已结束时静默忽略。 */
   warn(taskId: string, message: string): void {
     const t = this.tasks.get(taskId)
     if (!t) return
@@ -103,7 +105,7 @@ export class TaskManager {
     this.push('task-warning', taskId, undefined, t.phase, { message })
   }
 
-  /** 进入等待确认阶段（如导出预览），属于独立状态，不属于 running */
+  /** 进入等待确认阶段（如导出预览待确认）：独立状态 awaiting_confirm，不再算作 running。 */
   awaitConfirm(taskId: string): void {
     const t = this.tasks.get(taskId)
     if (!t) return
@@ -113,6 +115,7 @@ export class TaskManager {
     })
   }
 
+  /** 用户确认继续后，任务从 awaiting_confirm 回到 running。 */
   confirmProceed(taskId: string): void {
     const t = this.tasks.get(taskId)
     if (t) t.status = 'running'
@@ -136,7 +139,7 @@ export class TaskManager {
     return snapshot
   }
 
-  /** 取消指定任务；taskId 为空取消全部。不算 done 也不算 error，走 task-cancelled */
+  /** 取消指定任务；taskId 为空时取消全部任务。取消不算 done 也不算 error，统一走 task-cancelled 事件。 */
   cancel(taskId?: string): TaskSnapshot[] {
     const targets = taskId ? [taskId] : [...this.tasks.keys()]
     const cancelled: TaskSnapshot[] = []
@@ -155,7 +158,7 @@ export class TaskManager {
     return cancelled
   }
 
-  /** 快照 + 增量重连：lastSeq 超出缓冲返回 snapshotExpired */
+  /** 重连恢复：返回任务快照与 lastSeq 之后的增量事件；lastSeq 超出缓冲范围时 snapshotExpired 置 true。 */
   subscribe(taskId: string, lastSeq: number): {
     snapshot: TaskSnapshot | null
     events: TaskEvent[]
@@ -169,6 +172,7 @@ export class TaskManager {
     return { snapshot, events: delta, snapshotExpired: false }
   }
 
+  /** 收尾：标记终态、刷新耗时，返回快照后将任务从注册表移除。 */
   private finish(taskId: string, status: TaskStatus, message: string): TaskSnapshot | null {
     const t = this.tasks.get(taskId)
     if (!t) return null
@@ -180,6 +184,7 @@ export class TaskManager {
     return snapshot
   }
 
+  /** 生成事件并写入 EventBuffer，同时立即推送到渲染进程。 */
   private push(
     type: TaskEventType,
     taskId: string,

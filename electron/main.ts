@@ -9,7 +9,7 @@ import { TaskManager } from './task/task-manager'
 import { ConfigStore } from './config/store'
 import { PathWhitelist } from './security/path-whitelist'
 
-// 单实例锁：第二个实例启动时不创建新窗口，聚焦已有窗口
+// 单实例锁：拿不到锁说明已有实例在运行，直接退出；聚焦已有窗口由 second-instance 回调处理。
 const gotLock = app.requestSingleInstanceLock()
 
 if (!gotLock) {
@@ -20,13 +20,13 @@ if (!gotLock) {
   if (process.env.LOCALAPPDATA) {
     const legacyDir = path.join(process.env.LOCALAPPDATA, '千兆宇宙中心')
     const newDir = path.join(process.env.LOCALAPPDATA, 'GigaCenter')
-    // 一次性迁移：旧中文目录存在且新目录不存在时整体改名，保留既有配置与日志
+    // 一次性迁移：旧中文目录存在且新目录不存在时整体改名，保留既有配置与日志。
     try {
       if (fs.existsSync(legacyDir) && !fs.existsSync(newDir)) {
         fs.renameSync(legacyDir, newDir)
       }
     } catch (err) {
-      // 迁移失败不影响启动：本次按新目录运行，旧目录保留待手动处理
+      // 迁移失败不阻断启动：继续按新目录运行，旧中文目录保留待手动处理。
       console.error('user data dir migration failed', err)
     }
     app.setPath('userData', newDir)
@@ -35,7 +35,7 @@ if (!gotLock) {
   // 不设置时任务栏按钮/系统通知直接采用 exe 图标与名称（GigaCenter），符合预期。
   initLogger()
 
-  // 运行时图标：public → dist 复制后随包携带（开发/打包路径一致）；build/ 仅打包配置用
+  // 运行时图标：public → dist 复制后随包携带（开发/打包路径一致）；build/ 仅打包配置使用。
   const APP_ICON = path.join(__dirname, '../../dist/icon.png')
   const TRAY_ICON = path.join(__dirname, '../../dist/tray.png')
 
@@ -46,7 +46,7 @@ if (!gotLock) {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) win.webContents.send(IPC_CHANNELS.eventTask, event)
     }
-    // 系统通知：只用于长任务完成/失败，设置里可关
+    // 系统通知：仅长任务完成/失败时弹出，可在设置里关闭。
     if (
       (event.type === 'task-done' || event.type === 'task-error') &&
       config.getPreferences().notificationsEnabled
@@ -56,7 +56,7 @@ if (!gotLock) {
         typeof event.payload === 'object' && event.payload && 'message' in event.payload
           ? String((event.payload as { message: string }).message)
           : '查看数据工作台'
-      // 通知显式带图标：运行时图标随 dist 打包（public → dist），不依赖 build/ 目录
+      // 通知显式指定图标：运行时图标随 dist 打包（public → dist），不依赖 build/ 目录。
       new Notification({ title, body, icon: nativeImage.createFromPath(APP_ICON), silent: false }).show()
     }
   })
@@ -69,10 +69,10 @@ if (!gotLock) {
     node: process.versions.node
   })
 
-  // 去除窗口自带的 File/Edit/View/Window 原生菜单栏；托盘菜单独立不受影响
+  // 移除窗口自带的 File/Edit/View/Window 原生菜单栏；托盘菜单独立设置，不受影响。
   Menu.setApplicationMenu(null)
 
-  // 按持久化偏好设置主题来源（system 时跟随操作系统，dark/light 强制）
+  // 按持久化偏好设置主题来源（system 跟随操作系统，dark/light 强制指定）。
   nativeTheme.themeSource = config.getPreferences().theme
 
   function createWindow(): void {
@@ -83,7 +83,7 @@ if (!gotLock) {
       minWidth: 960,
       minHeight: 640,
       title: '千兆宇宙中心',
-      // 窗口创建底色与当前主题一致，避免暗色下启动白闪
+      // 窗口创建底色与当前主题一致，避免暗色主题下启动白闪。
       backgroundColor: isDark ? '#1b1b20' : '#f5f5f7',
       autoHideMenuBar: true,
       icon: nativeImage.createFromPath(APP_ICON),
@@ -115,7 +115,7 @@ if (!gotLock) {
       }, 5000)
     })
 
-    // 任务运行中最小化时隐藏到托盘（恢复可点托盘或任务栏）
+    // 任务运行中最小化时隐藏到托盘（点击托盘或任务栏图标可恢复）。
     win.on('minimize', () => {
       if (tasks.isPageBusy('convert') || tasks.isPageBusy('analyze') && tray) {
         win.hide()
@@ -130,7 +130,7 @@ if (!gotLock) {
       void win.loadFile(path.join(__dirname, '../../dist/index.html'))
     }
 
-    // 事件推送探针：验证 webContents.send 通道
+    // 事件推送探针：验证主进程到渲染进程的 webContents.send 通道可用。
     win.webContents.on('did-finish-load', () => {
       win.webContents.send(IPC_CHANNELS.eventProbe, {
         from: 'main',
@@ -147,7 +147,7 @@ if (!gotLock) {
     createWindow()
 
     // 托盘：常驻系统托盘，任务运行中最小化到托盘；点击恢复主窗口。
-    // 用专用 16x16 透明 PNG（不经 ico/resize，避免托盘显示白块）
+    // 用专用 16x16 透明 PNG（不经 ico/resize，避免托盘显示白块）。
     try {
       let img = nativeImage.createFromPath(TRAY_ICON)
       if (img.isEmpty()) img = nativeImage.createFromPath(APP_ICON)
@@ -182,10 +182,10 @@ if (!gotLock) {
     if (process.platform !== 'darwin') app.quit()
   })
 
-  // 正常退出清理本实例临时根；强杀进程不走此流程，靠启动扫描兜底
+  // 正常退出时清理本实例临时根；强杀进程不经过此流程，由启动扫描兜底。
   app.on('before-quit', () => {
     logger.info('[event=app-quit]', { reason: 'normal' })
-    // 先终止全部 worker 并终结任务，再关会话、清理临时目录
+    // 先终止全部 worker 并终结任务，再关闭会话、清理临时目录。
     cancelAllActiveTasks()
     temp.dispose()
   })

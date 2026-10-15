@@ -1,5 +1,5 @@
-// 主题与字号应用：html[data-theme] 驱动 token 换肤，--font-scale 驱动字号缩放。
-// fontSize 语义为界面基准字号（px），默认 14；换算为 root 缩放比例（14 -> 1）。
+// 主题与字号应用：在 <html> 上设置 data-theme 属性驱动 CSS token 换肤，--font-scale 驱动 root 字号缩放。
+// fontSize 语义为界面基准字号（px），默认 14；按 14px 归一化为 root 缩放比例（14 -> 1），并限制在 0.7～1.4 区间。
 
 export type ResolvedTheme = 'light' | 'dark'
 

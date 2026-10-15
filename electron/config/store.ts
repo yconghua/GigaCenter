@@ -4,8 +4,8 @@ import { app } from 'electron'
 import { logger } from '../log'
 import type { AppPreferences } from '../../shared/ipc-types'
 
-// 配置持久化边界：只存 UI 偏好。
-// 目录 %LOCALAPPDATA%\GigaCenter\config，preferences.json 独立文件。
+// 配置持久化边界：只存 UI 偏好设置。
+// 持久化目录为 Electron userData 下的 config，偏好存为独立文件 preferences.json。
 // 不存原始数据、不存查询结果、不存用户文件名、不存临时路径。
 
 const DEFAULT_SHORTCUTS: Record<string, string> = {
@@ -40,6 +40,7 @@ export class ConfigStore {
     this.prefsPath = path.join(this.configDir, 'preferences.json')
   }
 
+  /** 初始化：确保配置目录存在，并用已存偏好覆盖默认值（缺省项回退默认）。 */
   init(): void {
     fs.mkdirSync(this.configDir, { recursive: true })
     this.prefs = { ...DEFAULTS, ...this.readJson<Partial<AppPreferences>>(this.prefsPath, {}) }
@@ -49,6 +50,7 @@ export class ConfigStore {
     return { ...this.prefs }
   }
 
+  /** 合并偏好补丁并写盘，返回合并后的完整偏好拷贝。 */
   setPreferences(patch: Partial<AppPreferences>): AppPreferences {
     this.prefs = { ...this.prefs, ...patch }
     this.writeJson(this.prefsPath, this.prefs)
@@ -65,6 +67,7 @@ export class ConfigStore {
     return this.dirSize(this.configDir)
   }
 
+  /** 读取 JSON 配置；文件缺失或解析失败时回退默认值并记录告警。 */
   private readJson<T>(p: string, fallback: T): T {
     try {
       if (!fs.existsSync(p)) return fallback
@@ -75,6 +78,7 @@ export class ConfigStore {
     }
   }
 
+  /** 原子写：先写同目录临时文件再 rename 覆盖，避免写入中途失败损坏偏好文件。 */
   private writeJson(p: string, data: unknown): void {
     const tmp = `${p}.tmp`
     try {
@@ -93,6 +97,7 @@ export class ConfigStore {
     }
   }
 
+  /** 递归统计目录总字节数；目录不存在或异常时返回 0。 */
   private dirSize(p: string): number {
     try {
       if (!fs.existsSync(p)) return 0

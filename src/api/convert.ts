@@ -9,7 +9,7 @@ import type {
   WorkbookInfo
 } from '@shared/ipc-types'
 
-/** 格式转换 IPC 封装：组件不直接调 ipcRenderer */
+/** 格式转换 IPC 封装：前端组件不直接调用 ipcRenderer，统一经此发起 convert:* 通道的工作簿解析、工作表检视与导出请求。 */
 
 export interface ParseResult {
   workbook: WorkbookInfo

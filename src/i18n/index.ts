@@ -1,7 +1,7 @@
 import type { App } from 'vue'
 
-// 国际化：初期仅中文词条，结构预留多语言扩展。
-// 所有 UI 文案必须通过 $t() 调用，不硬编码中文。
+// 国际化入口：当前仅内置中文词条，但 messages 按语言分组组织，便于后续新增语言。
+// 约束：所有界面文案必须经 t() / $t() 取词，禁止在组件中硬编码中文。
 const messages: Record<string, Record<string, string>> = {
   zh: {
     'app.title': '千兆宇宙中心',
@@ -81,9 +81,10 @@ const messages: Record<string, Record<string, string>> = {
   }
 }
 
+// 当前固定使用中文词条（多语言扩展时按 locale 切换）。
 const dict = messages.zh
 
-/** 供 script 中使用的翻译函数（模板中用 $t） */
+/** script 中调用的翻译函数；模板内通过全局属性 $t 复用同一实现。未命中词条时原样返回 key，避免界面出现空白。 */
 export function t(key: string): string {
   return dict[key] ?? key
 }
@@ -93,6 +94,7 @@ export interface I18n {
   t(key: string): string
 }
 
+/** 安装国际化：向应用注册全局 $t；当前固定中文，locale 参数为多语言扩展预留。 */
 export function createI18n(locale = 'zh') {
   const i18n: I18n = {
     locale,

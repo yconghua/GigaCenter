@@ -4,23 +4,23 @@ import { randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { logger, sanitizePath } from '../log'
 
-/** 数据分析会话：临时 SQLite 生命周期与连接管理。
- *  会话临时库放会话临时目录，WAL 模式；默认 query_only（写权限由设置开关控制）。 */
+/** 数据分析会话：临时 SQLite 的创建、注册表与生命周期管理。
+ *  每个会话在实例临时目录下独占一个子目录，库文件启用 WAL；会话按空闲 TTL 回收，应用退出时统一清理。 */
 
 export interface AnalyzeSession {
   sessionId: string
   dbPath: string
-  /** 主连接：串行写/元数据；查询走 worker 的只读短连接 */
+  /** 主连接：串行执行写与元数据操作；耗时查询走 worker 的只读短连接。 */
   db: Database.Database
   createdAt: number
   /** 最近一次使用时间：空闲超时回收依据（主进程定期扫描） */
   lastActiveAt: number
 }
 
-/** 会话注册表：sessionId -> 会话（含主连接与目录信息），退出/关闭时清理 */
+/** 会话注册表：sessionId -> 会话（含主连接与目录信息），退出/关闭时清理。 */
 const sessions = new Map<string, AnalyzeSession & { dir: string }>()
 
-/** 创建会话：实例会话根下建独立目录并初始化临时 SQLite（WAL；写权限由设置层控制） */
+/** 创建会话：在实例临时根下建独立会话目录并初始化临时 SQLite（WAL 模式，synchronous=NORMAL）。 */
 export function createSession(instanceTempRoot: string): AnalyzeSession {
   const sessionId = randomUUID().replace(/-/g, '')
   const dir = path.join(instanceTempRoot, 'sessions', sessionId)
@@ -61,7 +61,7 @@ export function closeExpiredSessions(ttlMs: number): string[] {
   return expired
 }
 
-/** 关闭会话：关闭连接并清理会话临时目录（幂等） */
+/** 关闭会话：先 wal_checkpoint(TRUNCATE) 截断 WAL，再关连接、删临时目录；重复调用幂等。 */
 export function closeSession(sessionId: string): void {
   const session = sessions.get(sessionId)
   if (!session) return

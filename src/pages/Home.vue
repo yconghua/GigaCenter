@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import type { AppPreferences } from '@shared/ipc-types'
 
-// 快捷键展示顺序；中文名通过 $t('home.sc.xxx') 取词条
+// 快捷键在首页表格中的展示顺序；中文名通过 $t('home.sc.xxx') 取 i18n 词条。
 const SHORTCUT_ORDER = ['runQuery', 'runSelected', 'formatSql', 'exportResult', 'openFile', 'openSettings', 'cancel'] as const
 
 const shortcuts = ref<Record<string, string>>({})

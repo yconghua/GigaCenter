@@ -2,8 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { logger } from '../log'
 
-// 原子写：导出先写目标目录下的临时文件，成功后 rename 成最终文件名。
-// Windows rename 目标存在会失败：先删目标再 rename；
+// 原子写：导出先写目标目录下的临时文件，全部内容落盘成功后再 rename 成最终文件名。
+// Windows 下 rename 遇到目标已存在会失败：先删目标再 rename；
 // 若删目标成功但 rename 失败，明确提示"原文件已被删除，请重新导出"。
 
 export type AtomicWriteResult =
@@ -22,7 +22,7 @@ export function atomicWriteFile(
   const tmp = path.join(dir, `.${path.basename(target)}.tmp-${process.pid}-${Date.now()}`)
   try {
     write(tmp)
-    // 目标存在：先删除（调用前可先清临时文件只读属性）
+    // 目标文件已存在：先删除（Windows rename 不覆盖；调用方可先清临时文件只读属性）。
     let targetDeleted = false
     if (fs.existsSync(target)) {
       try {
@@ -51,7 +51,7 @@ export function atomicWriteFile(
     try {
       if (fs.existsSync(tmp)) fs.rmSync(tmp)
     } catch {
-      /* 清理失败由启动扫描兜底 */
+      /* 临时文件清理失败由启动时的残留扫描兜底 */
     }
   }
 }
@@ -90,19 +90,20 @@ export async function asyncAtomicWriteFile(
       return { ok: false, error: `重命名失败：${String(err)}`, targetDeleted: false }
     }
   } catch (err) {
-    // 取消错误保持原类型向上传播，避免被包装成普通失败
+    // 取消错误保持原类型向上传播，避免被包装成普通失败而中断上报。
     if (err instanceof Error && err.name === 'CancelError') throw err
     return { ok: false, error: String(err), targetDeleted: false }
   } finally {
     try {
       if (fs.existsSync(tmp)) fs.rmSync(tmp)
     } catch {
-      /* 清理失败由启动扫描兜底 */
+      /* 临时文件清理失败由启动时的残留扫描兜底 */
     }
   }
 }
 
-/** 磁盘空间检查：目标目录剩余空间 >= requiredBytes 才通过；检测失败不阻塞 */
+/** 磁盘空间检查：以可用块数 × 块大小估算目标目录剩余空间，>= requiredBytes 才通过；
+ *  statfs 检测失败（平台不支持等）时不阻塞，直接放行。 */
 export function checkDiskSpace(
   targetDir: string,
   requiredBytes: number
@@ -117,7 +118,8 @@ export function checkDiskSpace(
   }
 }
 
-/** 写入过程中周期性检查（每 100MB 一次由调用方控制），低于阈值中止 */
+/** 写入过程中的周期性空间检查（检查频率由调用方控制）：返回剩余空间是否仍高于阈值，
+ *  低于阈值时由调用方中止导出；检测失败视为通过。 */
 export function assertDiskSpace(targetDir: string, minFreeBytes: number): boolean {
   try {
     const stat = fs.statfsSync(targetDir)

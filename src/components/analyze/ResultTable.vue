@@ -2,8 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 
-// 查询结果表格：虚拟滚动支持大结果集（全量数据，横向+竖向滚动）；表头固定在数据上方，点击排序；
-// 单元格/行复制、列显隐。
+// 查询结果表格：虚拟滚动渲染全量结果集（横向+竖向滚动），表头 sticky 固定在顶部；
+// 支持点击表头排序、单元格/全部可见行复制、列宽拖拽与列显隐。
 
 const props = defineProps<{
   columns: string[]
@@ -20,6 +20,7 @@ const colWidths = ref<Record<number, number>>({})
 const hiddenCols = ref<Set<number>>(new Set())
 
 const ROW_H = 32
+// 前端内存排序：按列值字符串比较，不改动原始 props.rows；未选排序列时原样返回
 const sortedRows = computed<(string | null)[][]>(() => {
   if (sortCol.value < 0 || sortCol.value >= props.columns.length) return props.rows
   const ci = sortCol.value
@@ -53,7 +54,7 @@ function colStyle(ci: number): Record<string, string> {
     : { minWidth: '120px', maxWidth: '240px' }
 }
 
-/** 拖拽表头把手：调整该列宽度，限 60~600px */
+/** 拖拽表头右缘把手调列宽：mousemove 期间实时写入宽度（限 60~600px），mouseup 时注销监听并恢复文本选择。 */
 function startColResize(ci: number, e: MouseEvent): void {
   e.preventDefault()
   e.stopPropagation()
@@ -90,6 +91,7 @@ function toggleCol(ci: number): void {
   hiddenCols.value = next
 }
 
+// 行数变化时通知虚拟器重测总高度，避免残留旧滚动位置
 watch(
   () => props.rows.length,
   () => virtualizer.value?.measure()

@@ -5,7 +5,7 @@ import { useFeedbackStore } from '@/store/feedback'
 const feedback = useFeedbackStore()
 const expanded = ref(false)
 
-// 同一时刻只显示最上层一个模态，其余排队
+// 对话框栈：同一时刻只渲染栈顶（最新）一个对话框，其余排队等待，关闭栈顶后自动露出下一个。
 const top = computed(() => feedback.dialogs[feedback.dialogs.length - 1] ?? null)
 
 function onPrimary(): void {
@@ -21,7 +21,7 @@ function onSecondary(): void {
 function onKeydown(e: KeyboardEvent): void {
   if (!top.value) return
   if (e.key === 'Escape') {
-    // 确认框 Esc 取消；错误框 Esc 关闭
+    // Esc 触发次级动作（确认框=取消、错误框=关闭），Enter 触发主按钮。
     e.preventDefault()
     onSecondary()
   } else if (e.key === 'Enter') {
@@ -30,6 +30,7 @@ function onKeydown(e: KeyboardEvent): void {
   }
 }
 
+// 全局键盘监听仅由栈顶对话框响应（onKeydown 内部已判空），组件卸载时移除，避免监听器泄漏。
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
@@ -52,7 +53,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <div class="text-sm font-semibold">{{ top.title }}</div>
         <div class="mt-2 text-sm text-[var(--c-text)]">{{ top.message }}</div>
 
-        <!-- 错误框：诊断详情折叠区 + 复制 -->
+        <!-- 错误框：诊断详情折叠区，展开后显示错误码与详细诊断 -->
         <div v-if="top.kind === 'error'" class="mt-2">
           <button
             class="text-xs text-[var(--c-text-2)] hover:text-[var(--c-text)]"

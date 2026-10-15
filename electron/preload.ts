@@ -2,9 +2,9 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { IpcRendererEvent } from 'electron'
 import type { GigaCenterApi } from '../shared/ipc-types'
 
-// preload 白名单：只暴露 invoke/on/off。
+// preload 白名单：仅暴露 invoke 与 on（on 返回订阅注销函数），不直接透出 off。
 // 注意：sandbox: true 下 preload 不能 require 任何模块（仅 electron 内置），
-// 因此通道白名单在此内联，值必须与 shared/ipc-types.ts 保持一致。
+// 因此通道白名单在此内联，取值必须与 shared/ipc-types.ts 保持一致。
 const allowedChannels = new Set<string>([
   'app:ping',
   'app:get-app-info',
@@ -62,8 +62,10 @@ const api: GigaCenterApi = {
   },
   on: (channel, cb) => {
     if (!allowedChannels.has(channel)) return () => undefined
+    // 监听器剥离子进程事件对象，只把 payload 转发给渲染进程回调
     const listener = (_e: IpcRendererEvent, payload: unknown): void => cb(payload)
     ipcRenderer.on(channel, listener)
+    // 返回注销函数：渲染进程组件卸载时调用，解绑监听、避免重复订阅
     return () => {
       ipcRenderer.removeListener(channel, listener)
     }
@@ -72,6 +74,6 @@ const api: GigaCenterApi = {
 
 contextBridge.exposeInMainWorld('gigacenter', {
   ...api,
-  /** 拖拽/文件选择：渲染进程 File 对象 -> 绝对路径（sandbox 下 File.path 已被移除） */
+  /** 拖拽/文件选择：渲染进程 File 对象 → 绝对路径（sandbox 下 File.path 已被移除，必须经 webUtils 取真实路径） */
   filePathFor: (file: File): string => webUtils.getPathForFile(file)
 })

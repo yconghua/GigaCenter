@@ -10,9 +10,9 @@ import ExportResultModal from '@/components/analyze/ExportResultModal.vue'
 import ImportPreviewModal from '@/components/analyze/ImportPreviewModal.vue'
 import type { AnalyzeImportPayload, AnalyzeQueryResult } from '@shared/ipc-types'
 
-// 数据分析工作台：导入数据文件（可多选）转临时 SQLite，写 SQL 查询（支持跨表），浏览表结构与结果导出。
-// 导入前先结构探测，弹「导入前确认：表名与列名」模态，确认后一次落库。
-// 历史仅当前会话有效。
+// 数据分析工作台：导入数据文件（可多选）转为临时 SQLite 库，编写 SQL 查询（支持跨表），浏览表结构并导出结果。
+// 导入前先做结构探测，弹「导入前确认：表名与列名」模态，用户确认后一次落库。
+// 查询历史仅当前会话有效，退出即清空。
 
 const analyze = useAnalyzeStore()
 const feedback = useFeedbackStore()
@@ -25,15 +25,15 @@ const importError = ref('')
 const bottomTab = ref<'history' | 'schema'>('history')
 const objectFilter = ref('')
 const expanded = ref<Record<string, boolean>>({})
-// 左右两列内上下面板的比例（上：对象树/SQL；下：历史结构/结果），拖拽分割条调整
+// 左右两列内上下面板的高度比例（上：对象树/SQL 编辑器；下：查询历史/表结构与结果），由拖拽分割条调整。
 const leftRatio = ref(0.5)
 const rightRatio = ref(0.45)
 const leftColRef = ref<HTMLDivElement | null>(null)
 const rightColRef = ref<HTMLDivElement | null>(null)
-// 左列宽度（右列自适应），拖拽垂直分割条调整，限 180~520px
+// 左列宽度（右列自适应占满剩余空间），拖拽垂直分割条调整，限制在 180~520px。
 const leftWidth = ref(256)
 
-/** 拖拽垂直分割条：调整左右两列宽度 */
+/** 拖拽垂直分割条：按住后监听 window 的 mousemove/mouseup，按横向位移更新左列宽度并钳制范围。 */
 function startColDrag(e: MouseEvent): void {
   e.preventDefault()
   const startX = e.clientX
@@ -51,7 +51,7 @@ function startColDrag(e: MouseEvent): void {
   window.addEventListener('mouseup', onUp)
 }
 
-/** 拖拽分割条：按容器高度换算上下比例，限 0.15~0.85 */
+/** 拖拽横向分割条：按容器高度把纵向位移换算成上下面板比例，限制在 0.15~0.85。 */
 function startSplitDrag(side: 'left' | 'right', e: MouseEvent): void {
   e.preventDefault()
   const container = side === 'left' ? leftColRef.value : rightColRef.value
@@ -75,6 +75,7 @@ function startSplitDrag(side: 'left' | 'right', e: MouseEvent): void {
   window.addEventListener('mouseup', onUp)
 }
 
+// 对象树按关键字过滤：同时匹配对象名（表/视图/索引）与下属列名
 const filteredObjects = computed(() => {
   const kw = objectFilter.value.trim().toLowerCase()
   if (!kw) return analyze.objects
@@ -88,7 +89,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  // 会话保留（切 Tab 恢复），仅应用退出时清理
+  // 组件卸载时不关闭会话：切 Tab 后可恢复现场；临时库只在应用退出时由主进程清理。
 })
 
 function toggleExpand(name: string): void {
@@ -129,7 +130,7 @@ function onDragLeave(): void {
   dropActive.value = false
 }
 
-/** 结构探测后弹「导入前确认：表名与列名」模态 */
+/** 结构探测通过后弹「导入前确认：表名与列名」模态，用户确认表名/列名映射后才落库。 */
 async function openProbeModal(paths: string[]): Promise<void> {
   if (editingBusy.value) {
     feedback.warning('已有任务运行中，请等待或取消')
@@ -167,7 +168,7 @@ async function openProbeModal(paths: string[]): Promise<void> {
   }
 }
 
-/** 按映射落库：复用当前会话（支持跨表查询），主进程新建则切换 */
+/** 按用户确认的映射落库：复用当前会话以支持跨表查询；主进程侧新建会话时切换到实际落库的 sessionId。 */
 async function doImport(files: AnalyzeImportPayload['files']): Promise<void> {
   if (importing.value || analyze.running) {
     feedback.warning('已有任务运行中，请等待或取消')
@@ -178,11 +179,11 @@ async function doImport(files: AnalyzeImportPayload['files']): Promise<void> {
   try {
     const res = await analyzeApi.importFile({ sessionId: analyze.sessionId || undefined, files })
     if (!res.ok) {
-      // 失败提示由 task store 统一右下角 Toast（task-error 事件），此处只留页面状态
+      // 失败提示由 task store 统一以右下角 Toast 弹出（task-error 事件），此处只记录页面内错误状态
       importError.value = res.error.message
       return
     }
-    // 复用会话时保持原 sessionId/dbPath；新建会话时切换到实际落库的会话，后续查询/预览才命中
+    // 复用会话时 sessionId/dbPath 不变；新建会话时必须切换到实际落库的会话，否则后续查询与预览会落空
     analyze.sessionId = res.value.sessionId
     analyze.dbPath = res.value.dbPath
     analyze.mergeImported(res.value.tables, res.value.warnings)
@@ -194,7 +195,7 @@ async function doImport(files: AnalyzeImportPayload['files']): Promise<void> {
     const firstTable = analyze.tables[0]
     if (firstTable) void analyze.selectTable(firstTable.name)
   } catch (e) {
-    // IPC 异常兜底：不让导入静默失败，也不让 importing 卡死按钮
+    // IPC 异常兜底：避免导入静默失败，也避免 importing 一直为 true 导致导入按钮卡死
     const msg = e instanceof Error ? e.message : String(e)
     importError.value = msg
     feedback.errorToast(`导入失败：${msg}`)
@@ -214,12 +215,13 @@ async function runQuery(sqlText: string): Promise<void> {
   const res = await analyzeApi.runQuery({ sessionId: analyze.sessionId, sql: sqlText })
   analyze.running = false
   if (!res.ok) {
-    // 失败提示由 task store 统一右下角 Toast（task-error 事件），此处只留页面状态
+    // 失败提示由 task store 统一以右下角 Toast 弹出（task-error 事件），此处只记录页面内错误状态
     analyze.resultError = res.error.message
     return
   }
   const result: AnalyzeQueryResult = res.value
   analyze.result = result
+  // SQL 以 EXPLAIN 开头时，结果集为查询计划树，界面切换到查询计划面板展示
   analyze.explainMode = /^EXPLAIN\b/i.test(sqlText.trim())
   analyze.pushHistory(sqlText, result.rowCount, result.elapsedMs)
   if (result.truncated) {
@@ -288,7 +290,7 @@ const taskPercent = computed(() => {
 })
 
 async function onResetAnalyze(): Promise<void> {
-  // 重置 = 关闭旧会话（删临时库）并清空前端，下次导入自动开新会话
+  // 重置 = 关闭旧会话（主进程删除临时库）并清空前端状态，下次导入时自动开启新会话
   if (analyze.sessionId) {
     await analyzeApi.closeSession(analyze.sessionId)
   }

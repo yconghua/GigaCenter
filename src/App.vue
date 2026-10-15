@@ -11,7 +11,7 @@ import BannerHost from '@/components/feedback/BannerHost.vue'
 const route = useRoute()
 const task = useTaskStore()
 
-// 启动时应用持久化主题/字号；跟随系统档的后续系统切换由主进程 nativeTheme 事件推送
+// 启动时应用持久化主题与字号设置；跟随系统档时，后续系统主题切换由主进程 nativeTheme 事件推送。
 async function initTheme(): Promise<void> {
   const [infoRes, prefsRes] = await Promise.all([
     window.gigacenter.invoke<AppInfo>('app:get-app-info'),

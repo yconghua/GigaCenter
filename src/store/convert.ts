@@ -10,8 +10,9 @@ import type {
 } from '@shared/ipc-types'
 import type { ParseResult } from '@/api/convert'
 
-// 格式转换会话状态：源文件、Sheet 勾选与类型修正、目标配置、导出锁定态。
-// 两个 Tab 完全独立，不互传数据；单任务锁在主进程。
+// 格式转换会话的前端状态：源工作簿、各工作表的勾选与列类型/列名修正、
+// 导出目标配置，以及导出进行中的界面锁定态。
+// 本页与分析页互不共享数据；同一页同时只允许一个导出任务，任务锁由主进程持有。
 
 const DEFAULT_TARGET: ExportTargetKind = 'sqlite'
 
@@ -31,8 +32,8 @@ export const useConvertStore = defineStore('convert', {
   }),
   actions: {
     setParsed(parsed: ParseResult): void {
-      // 重建 sheet 配置时继承旧配置（表头行/公式/合并/表名/勾选），
-      // 否则每次重采样都会把用户设置重置为默认
+      // 重建各工作表配置时继承旧配置（表头行/公式模式/合并单元格/表名/勾选状态），
+      // 否则每次重新探测都会把用户设置重置为默认值。
       const prev = this.sheetConfigs
       this.workbook = parsed.workbook
       this.inspects = parsed.inspects
@@ -67,6 +68,7 @@ export const useConvertStore = defineStore('convert', {
     setColumnName(sheetId: number, colIndex: number, name: string): void {
       const cfg = this.sheetConfigs[sheetId]
       if (!cfg) return
+      // 清空自定义列名即删除覆盖，导出时回落到原始表头行
       const trimmed = name.trim()
       if (trimmed) cfg.columnNames[colIndex] = trimmed
       else delete cfg.columnNames[colIndex]
@@ -96,7 +98,7 @@ export const useConvertStore = defineStore('convert', {
         tablePrefix: this.tablePrefix,
         csvFormulaProtection: this.csvFormulaProtection,
         conflictMode: this.conflictMode,
-        // Pinia state 是 reactive 代理，IPC 无法克隆；先拍平成纯对象再传输
+        // Pinia state 是 reactive 代理，IPC 结构化克隆无法处理；先展开拍平成纯对象再传输
         sheets: Object.values(this.sheetConfigs)
           .filter((s) => s.include)
           .map((s) => ({
@@ -127,7 +129,7 @@ export const useConvertStore = defineStore('convert', {
       this.preview = null
       this.locked = false
     },
-    /** 重置 = 开启新会话：先清主进程旧会话缓存，再清前端全部状态 */
+    /** 重置 = 开启新会话：先通知主进程清理旧会话缓存，再清空前端全部状态 */
     async resetSession(): Promise<void> {
       await window.gigacenter.invoke('convert:reset-session')
       this.reset()

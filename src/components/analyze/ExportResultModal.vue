@@ -4,7 +4,8 @@ import { useFeedbackStore } from '@/store/feedback'
 import { useAnalyzeStore } from '@/store/analyze'
 import { analyzeApi } from '@/api/analyze'
 
-// 查询结果导出预览模态：列、前 50 行样本、目标格式、文件名；确认后走保存对话框 + worker 导出。
+// 查询结果导出预览模态：展示列、前 50 行样本与目标格式选项；确认后先弹保存对话框选输出路径，
+// 再由主进程流式导出完整结果（不经过前端结果集）。
 
 const props = defineProps<{ dialogId: number; sql: string }>()
 const feedback = useFeedbackStore()

@@ -10,8 +10,8 @@ import type { CompletionContext, CompletionResult } from '@codemirror/autocomple
 import { sql, SQLite, MySQL, PostgreSQL } from '@codemirror/lang-sql'
 import { format } from 'sql-formatter'
 
-// CodeMirror 6 SQL 编辑器自封装：语法高亮、括号匹配、行号、多光标、查找替换、
-// 格式化、执行选中、表名/字段名自动补全、错误标记。
+// CodeMirror 6 SQL 编辑器自封装：语法高亮、括号匹配、行号、撤销历史、查找替换、
+// 表名/字段名自动补全；快捷键支持执行全文、执行选中片段与格式化。
 
 const props = defineProps<{
   modelValue: string
@@ -30,6 +30,7 @@ const emit = defineEmits<{
 const host = ref<HTMLDivElement | null>(null)
 let view: EditorView | null = null
 
+// 自动补全源：按输入前缀（不区分大小写）过滤当前会话的表名与字段名，最多 200 条
 function completionSource(context: CompletionContext): CompletionResult | null {
   const word = context.matchBefore(/[\w"']*/)
   if (!word || (word.from === word.to && !context.explicit)) return null
@@ -112,6 +113,7 @@ onBeforeUnmount(() => {
   view = null
 })
 
+// 外部 modelValue 变化时整体替换文档（编辑器内部修改会反向 emit，故先比对避免光标跳动）
 watch(
   () => props.modelValue,
   (v) => {

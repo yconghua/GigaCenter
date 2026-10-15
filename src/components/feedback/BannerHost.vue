@@ -5,7 +5,7 @@ const feedback = useFeedbackStore()
 </script>
 
 <template>
-  <!-- 页面内顶部常驻提示条，每个页面最多 1 个 -->
+  <!-- 页面顶部常驻提示条（Banner）：由 feedback store 驱动，按 info / warning / error 着色，可手动关闭 -->
   <div
     v-for="banner in feedback.banners"
     :key="banner.id"

@@ -1,13 +1,13 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import Database from 'better-sqlite3'
 
-/** 数据分析查询 worker：执行主进程预检后的 SQL 语句列表，返回各结果集前 limit 行。
- *  取消：message {cancel:true} 置标志，语句间/行间检查后抛取消；terminate 兜底。
- *  连接模式：readonly=true 时只读 + query_only；false（允许修改临时库）时普通连接。 */
+/** 数据分析查询 worker：执行主进程预检后的 SQL 语句列表，各结果集只回传前 limit 行。
+ *  取消：主进程发送 {cancel:true} 消息置位标志，在语句之间与结果行之间检查后抛取消错误；terminate() 作为兜底。
+ *  连接模式：readonly=true 时只读打开并开启 query_only；false（允许修改临时库）时用普通连接。 */
 
 interface QueryWorkerData {
   dbPath: string
-  /** 主进程预检+拆分后的单条语句 */
+  /** 主进程预检（安全白名单）后拆分出的单条 SQL 语句。 */
   statements: string[]
   limit: number
   readonly: boolean
@@ -18,7 +18,7 @@ interface QueryResult {
   rows: (string | null)[][]
   rowCount: number
   truncated: boolean
-  /** EXPLAIN QUERY PLAN 语句才有：解析后的树 */
+  /** 仅 EXPLAIN QUERY PLAN 语句填充：按 id/parent 解析出的计划树。 */
   explainPlan: Array<{ detail: string; children: Array<{ detail: string }> }> | null
 }
 
@@ -30,7 +30,7 @@ parentPort?.on('message', (m: { cancel?: boolean }) => {
 function main(): void {
   const data = workerData as QueryWorkerData
   const t0 = Date.now()
-  const db = data.readonly ? new Database(data.dbPath, { readonly: true }) : new Database(data.dbPath)
+  const db = data.readonly ? new Database(data.dbPath, { readonly: true }) : new Database(data.dbPath) // 只读模式打开；允许修改临时库时用普通连接
   try {
     if (data.readonly) db.pragma('query_only = ON')
     const results: QueryResult[] = []
@@ -38,6 +38,7 @@ function main(): void {
       if (cancelled) throw cancelError()
       const trimmed = stmtText.trim()
       if (!trimmed) continue
+      // 语句白名单兜底：只放行常见 SQL 关键字开头的语句，其余直接跳过（安全预检在主进程已完成）
       if (!/^(SELECT|EXPLAIN|WITH|PRAGMA|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE|VACUUM|ANALYZE|REINDEX)\b/i.test(trimmed)) continue
       let stmt: Database.Statement
       try {
@@ -54,7 +55,7 @@ function main(): void {
       let truncated = false
       for (const row of stmt.iterate() as IterableIterator<Record<string, unknown>>) {
         if (cancelled) throw cancelError()
-        // 达到上限立即停止迭代：避免 SELECT * 全表扫描只为统计行数
+        // 达到 limit 立即停止迭代：避免 SELECT * 拖出全表扫描只为多统计几行。
         if (count >= data.limit) {
           truncated = true
           break
@@ -79,6 +80,7 @@ function main(): void {
   }
 }
 
+/** 单元格值序列化为展示字符串：BLOB 转 hex 文本，对象转 JSON，空值保留 null。 */
 function stringifyCell(v: unknown): string | null {
   if (v === null || v === undefined) return null
   if (v instanceof Uint8Array) return `0x${Buffer.from(v).toString('hex')}`
@@ -86,7 +88,7 @@ function stringifyCell(v: unknown): string | null {
   return String(v)
 }
 
-/** EXPLAIN QUERY PLAN 行(id/parent/notused/detail) 构建树 */
+/** 把 EXPLAIN QUERY PLAN 的结果行（id/parent/detail）按父子关系组织成树，供前端可视化展示。 */
 function buildExplainTree(
   rows: (string | null)[][],
   cols: string[]

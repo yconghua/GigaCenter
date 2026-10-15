@@ -15,8 +15,8 @@ import type {
   ProbeTableInfo
 } from '../../shared/ipc-types'
 
-/** 数据分析导入器：先结构探测（不落库），再按用户映射（表名/列名）落库到会话临时 SQLite。
- *  支持：SQLite、CSV/TXT、JSON（数组/NDJSON/单对象）、Excel（xlsx/xls）、SQL dump、BSON。
+/** 数据分析导入器：先结构探测（只读采样、不落库），再按用户映射（表名/列名/表头行位置）落库到会话临时 SQLite。
+ *  支持：SQLite、CSV/TXT、JSON（数组/NDJSON/单对象）、Excel（xlsx）、SQL dump、BSON；.xls 旧 OLE2 格式明确报错引导另存。
  *  不支持时明确报错，不静默降级。 */
 
 export interface ImportOptions {
@@ -29,9 +29,10 @@ export interface ImportOutcome {
   warnings: string[]
 }
 
+// CSV/Excel/JSON 批量入库的行数阈值：攒够一批走一次事务提交，平衡内存占用与事务开销
 const CSV_BATCH = 5000
 
-// ---------- 结构探测（不落库） ----------
+// ---------- 结构探测阶段（只读采样，不落库） ----------
 
 export async function probeSource(sourcePath: string): Promise<ProbeFileResult> {
   const ext = path.extname(sourcePath).toLowerCase()
@@ -49,7 +50,7 @@ export async function probeSource(sourcePath: string): Promise<ProbeFileResult> 
     if (ext === '.xlsx') {
       return { filePath: sourcePath, fileName, tables: await probeExcel(sourcePath), errors: [] }
     }
-    // .xls 为旧版 OLE2 二进制，exceljs 仅支持 .xlsx，快速失败避免长时间无响应
+    // .xls 为旧版 OLE2 二进制，exceljs 仅支持 .xlsx，此处快速失败避免长时间无响应。
     if (ext === '.xls') {
       return { filePath: sourcePath, fileName, tables: [], errors: ['不支持 .xls 旧格式，请用 Excel/WPS 将文件另存为 .xlsx 后导入'] }
     }
@@ -606,7 +607,7 @@ async function importSqlDumpMapped(
       }
     }
   }
-  // 统计行数
+  // 逐表统计行数，失败（如表已被删除）时置 null
   for (const t of tables) {
     try {
       const c = db.prepare(`SELECT count(*) c FROM ${quoteIdent(t.name)}`).get() as { c: number }
@@ -723,6 +724,7 @@ async function readBsonDocs(sourcePath: string): Promise<Record<string, unknown>
   return docs
 }
 
+/** 按分号切分 SQL dump 为独立语句：跟踪单引号/双引号/反引号与行注释/块注释状态，避免把字符串内的分号误切。 */
 function splitSqlStatements(sql: string): string[] {
   const out: string[] = []
   let cur = ''
@@ -773,6 +775,7 @@ function splitSqlStatements(sql: string): string[] {
   return out
 }
 
+/** 从 CREATE TABLE 语句括号体内提取列名：按顶层逗号拆分，跳过 PRIMARY/UNIQUE/FOREIGN 等表级约束项。 */
 function extractCreateColumns(createSql: string): string[] {
   const open = createSql.indexOf('(')
   const close = createSql.lastIndexOf(')')
@@ -834,6 +837,7 @@ function splitTopLevel(s: string): string[] {
   return out
 }
 
+/** Excel 单元格值转字符串：日期转 ISO 串，公式取计算结果，富文本拼接为纯文本，错误值转文本；空值返回 null。 */
 function cellToString(v: unknown): string | null {
   if (v === null || v === undefined) return null
   if (v instanceof Date) return v.toISOString()
@@ -852,6 +856,7 @@ function cellToString(v: unknown): string | null {
   return String(v)
 }
 
+/** 构建合并单元格映射：合并区域内非主单元格复用主单元格的值，避免这些位置落库为 NULL。 */
 function buildMergeMap(ws: unknown): Map<string, unknown> {
   const map = new Map<string, unknown>()
   const sheet = ws as {
@@ -904,6 +909,7 @@ function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`
 }
 
+/** 按表头行出现次数猜测分隔符（逗号/Tab/分号/竖线），次数最多者胜出。 */
 function detectDelimiter(firstLine: string): string {
   const candidates = [',', '\t', ';', '|']
   let best = ','
@@ -918,6 +924,7 @@ function detectDelimiter(firstLine: string): string {
   return best
 }
 
+/** 只读文件开头 64KB 用于编码与分隔符探测，避免加载整个大文件。 */
 function readHead(filePath: string): Buffer {
   const fd = fs.openSync(filePath, 'r')
   const buf = Buffer.alloc(64 * 1024)
