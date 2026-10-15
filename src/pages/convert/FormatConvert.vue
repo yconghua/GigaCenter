@@ -289,15 +289,18 @@ async function onResetSession(): Promise<void> {
             <span class="h-4 w-1 shrink-0 rounded-full bg-[var(--c-primary)]"></span>
             <span class="font-semibold text-[var(--c-text)]">{{ convert.workbook.fileName }}</span>
           </div>
-          <div class="flex gap-2">
-            <span class="text-xs text-[var(--c-text-2)]">{{ convert.workbook.fileSize }} 字节</span>
-            <button
-              class="rounded border border-[var(--c-border-strong)] px-2 py-0.5 text-xs hover:bg-[var(--c-surface-2)] disabled:opacity-50"
-              :disabled="task.isPageBusy('convert')"
-              @click="onResetSession"
-            >
-              重置（新会话）
-            </button>
+          <div class="flex flex-col items-end gap-1">
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-[var(--c-text-2)]">{{ convert.workbook.fileSize }} 字节</span>
+              <button
+                class="rounded border border-[var(--c-border-strong)] px-2 py-0.5 text-xs hover:bg-[var(--c-surface-2)] disabled:opacity-50"
+                :disabled="task.isPageBusy('convert')"
+                @click="onResetSession"
+              >
+                重新选择文件
+              </button>
+            </div>
+            <span class="text-xs text-[var(--c-text-2)]">重新选择将清空当前数据</span>
           </div>
         </div>
         <div v-if="!isExcel && convert.workbook.encoding !== 'utf8'" class="mb-2 text-xs text-[var(--c-accent)]">
