@@ -445,10 +445,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       title: '选择数据文件',
       defaultPath: config.getPreferences().lastOpenDirectory || app.getPath('documents'),
       properties: ['openFile'],
-      filters: [
-        { name: '数据文件', extensions: ['csv', 'txt', 'xlsx', 'xls'] },
-        { name: '所有文件', extensions: ['*'] }
-      ]
+      filters: [{ name: '数据文件', extensions: ['csv', 'txt', 'xlsx'] }]
     })
     if (result.canceled || result.filePaths.length === 0) {
       return ok({ filePath: null })
@@ -711,6 +708,10 @@ async function runParseTask(
   const ext = path.extname(filePath).toLowerCase()
   if (!['.csv', '.txt', '.xlsx', '.xls'].includes(ext)) {
     return fail('UNSUPPORTED_TYPE', `不支持的文件类型：${ext}`)
+  }
+  // .xls 为旧版 OLE2 二进制格式，exceljs 仅支持 .xlsx（zip 封装），直接明确提示避免长时间无响应
+  if (ext === '.xls') {
+    return fail('UNSUPPORTED_XLS', '不支持 .xls 旧格式，请用 Excel/WPS 将文件另存为 .xlsx 后导入')
   }
   const taskId = randomUUID()
   if (!tasks.begin({ taskId, title: `解析 ${path.basename(filePath)}`, page: 'convert' })) {

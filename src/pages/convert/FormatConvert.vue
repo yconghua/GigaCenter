@@ -269,8 +269,9 @@ async function onResetSession(): Promise<void> {
         :disabled="task.isPageBusy('convert')"
         @click="onPickSource"
       >
-        选择文件（CSV / TXT / Excel）
+        选择文件（CSV / TXT / XLSX）
       </button>
+      <div class="text-xs text-[var(--c-text-2)]">支持 CSV / TXT / XLSX 格式；旧版 .xls 请先另存为 .xlsx</div>
       <div
         class="flex h-28 w-full items-center justify-center rounded-lg border border-dashed border-[var(--c-border-strong)] bg-[var(--c-bg)] text-sm text-[var(--c-text-2)]"
         @dragover="onDragOver"
