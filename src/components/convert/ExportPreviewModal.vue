@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { convertApi } from '@/api/convert'
+import { useFeedbackStore } from '@/store/feedback'
 import type { ExportPreviewResult } from '@shared/ipc-types'
+import ExportContentModal from './ExportContentModal.vue'
 
 /** 导出预览模态：文件清单、表结构、一致性检查结果、目标文件冲突策略 */
 
@@ -10,7 +13,19 @@ const props = defineProps<{
   onClose: () => void
 }>()
 
+const feedback = useFeedbackStore()
 const mode = ref<'overwrite' | 'rename'>('rename')
+
+function showExportContent(sheetId: number): void {
+  const taskId = props.preview.taskId
+  feedback.pushModal({
+    title: `导出内容（工作表 ${sheetId + 1}）`,
+    component: ExportContentModal,
+    componentProps: {
+      load: () => convertApi.previewExportContent(taskId, sheetId)
+    }
+  })
+}
 </script>
 
 <template>
@@ -30,7 +45,7 @@ const mode = ref<'overwrite' | 'rename'>('rename')
 
     <!-- 文件清单 -->
     <div class="mb-3">
-      <div class="mb-1 text-xs font-semibold text-[var(--c-text-2)]">将生成 {{ props.preview.files.length }} 个文件（目录：{{ props.preview.outputDir }}）</div>
+      <div class="mb-1 text-xs font-semibold text-[var(--c-text-2)]">将生成 {{ props.preview.files.length }} 个文件（目录：{{ props.preview.outputDir }}），点击行查看导出内容</div>
       <div class="overflow-auto rounded border border-[var(--c-border)]">
         <table class="w-full border-collapse text-xs">
           <thead>
@@ -40,15 +55,22 @@ const mode = ref<'overwrite' | 'rename'>('rename')
               <th class="border border-[var(--c-border)] px-2 py-1">表名</th>
               <th class="border border-[var(--c-border)] px-2 py-1">行数</th>
               <th class="border border-[var(--c-border)] px-2 py-1">列数</th>
+              <th class="border border-[var(--c-border)] px-2 py-1">导出内容</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="f in props.preview.files" :key="f.sheetId" class="odd:bg-[var(--c-bg)]">
+            <tr
+              v-for="f in props.preview.files"
+              :key="f.sheetId"
+              class="cursor-pointer odd:bg-[var(--c-bg)] hover:bg-[var(--c-surface-2)]"
+              @click="showExportContent(f.sheetId)"
+            >
               <td class="border border-[var(--c-border)] px-2 py-1">{{ f.fileName }}</td>
               <td class="border border-[var(--c-border)] px-2 py-1">{{ f.sheetName }}</td>
               <td class="border border-[var(--c-border)] px-2 py-1">{{ f.tableName }}</td>
               <td class="border border-[var(--c-border)] px-2 py-1">{{ f.rowCount }}</td>
               <td class="border border-[var(--c-border)] px-2 py-1">{{ f.colCount }}</td>
+              <td class="border border-[var(--c-border)] px-2 py-1 text-[var(--c-accent)]">查看 →</td>
             </tr>
           </tbody>
         </table>

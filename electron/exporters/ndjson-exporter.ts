@@ -44,7 +44,7 @@ export async function exportNdjsonFile(options: NdjsonExportOptions): Promise<vo
   if (!result.ok) throw new Error(result.error)
 }
 
-function convertValue(v: string | null, type: ColumnType, name: string): unknown {
+export function convertValue(v: string | null, type: ColumnType, name: string): unknown {
   if (v === null || v === '') return null
   if (type === 'integer' || type === 'real') {
     const n = Number(v)

@@ -120,7 +120,7 @@ async function exportSqlScript(options: SqlExportOptions): Promise<void> {
   if (!result.ok) throw new Error(result.error)
 }
 
-function literalFor(
+export function literalFor(
   v: string | null,
   type: ColumnType,
   dialect: ReturnType<typeof getDialect>

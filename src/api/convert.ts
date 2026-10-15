@@ -1,6 +1,7 @@
 import type {
   ChooseOutputDirResult,
   ExportConfig,
+  ExportPreviewContentResult,
   ExportPreviewResult,
   InspectSheetPayload,
   Result,
@@ -38,5 +39,11 @@ export const convertApi = {
   },
   showInFolder(filePath: string): Promise<Result<null>> {
     return window.gigacenter.invoke<null>('convert:show-in-folder', { filePath })
+  },
+  previewExportContent(taskId: string, sheetId: number): Promise<Result<ExportPreviewContentResult>> {
+    return window.gigacenter.invoke<ExportPreviewContentResult>('convert:preview-export-content', {
+      taskId,
+      sheetId
+    })
   }
 }

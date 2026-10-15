@@ -30,6 +30,7 @@ const allowedChannels = new Set<string>([
   'convert:choose-output-dir',
   'convert:show-in-folder',
   'convert:choose-source-file',
+  'convert:preview-export-content',
   'convert:reset-session',
   'analyze:create-session',
   'analyze:probe-import',

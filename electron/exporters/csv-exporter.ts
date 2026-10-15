@@ -48,7 +48,7 @@ export async function exportCsvFile(options: CsvExportOptions): Promise<void> {
   if (!result.ok) throw new Error(result.error)
 }
 
-function escapeCsv(v: string | null, protection: boolean): string {
+export function escapeCsv(v: string | null, protection: boolean): string {
   if (v === null || v === '') return ''
   let s = v
   // 公式注入防护：以 = + - @ \t \r 开头时加 ' 前缀

@@ -37,6 +37,7 @@ import type { TaskManager } from '../task/task-manager'
 import type { ConfigStore } from '../config/store'
 import type { PathWhitelist } from '../security/path-whitelist'
 import { buildExportPreview, inspectSheetFile } from '../convert/convert-core'
+import { buildExportPreviewContent } from '../convert/preview-content'
 import type { ParsedSource } from '../convert/convert-core'
 import { createSession, getSession, closeSession, closeAllSessions, touchSession, closeExpiredSessions } from '../analyze/session'
 import { listObjects, getSchema, previewTable } from '../analyze/analyze-core'
@@ -491,6 +492,31 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     }
     shell.showItemInFolder(payload.filePath)
     return ok(null)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.convertPreviewExportContent, (_e, payload: { taskId: string; sheetId: number }) => {
+    const snapshot = convertState.snapshots.get(payload.taskId)
+    if (!snapshot) {
+      return fail('SNAPSHOT_NOT_FOUND', '导出配置快照不存在或已过期，请重新预览')
+    }
+    const sheet = snapshot.config.sheets.find((s) => s.sheetId === payload.sheetId && s.include)
+    if (!sheet) {
+      return fail('SHEET_NOT_INCLUDED', '该工作表未勾选导出')
+    }
+    const inspect = convertState.session?.parsed.inspects[payload.sheetId]
+    if (!inspect) {
+      return fail('INSPECT_NOT_FOUND', '工作表采样数据不存在，请重新解析')
+    }
+    const tableName = snapshot.tableNames[payload.sheetId] ?? sheet.tableName
+    try {
+      const result = buildExportPreviewContent(snapshot.config, sheet, inspect, tableName)
+      // 总行数以解析阶段的真实统计为准（采样结果只保留前 50 行）
+      const meta = convertState.session?.parsed.workbook.sheets.find((s) => s.id === payload.sheetId)
+      if (meta) result.totalRows = meta.rowCount
+      return ok(result)
+    } catch (err) {
+      return fail('PREVIEW_CONTENT_FAILED', `生成导出内容失败：${String(err)}`)
+    }
   })
 
   // ---------- 技术探针（框架阶段验证用） ----------

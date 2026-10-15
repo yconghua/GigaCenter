@@ -32,6 +32,8 @@ export const IPC_CHANNELS = {
   convertChooseOutputDir: 'convert:choose-output-dir',
   convertShowInFolder: 'convert:show-in-folder',
   convertChooseSourceFile: 'convert:choose-source-file',
+  /** 导出内容预览：按 taskId+sheetId 生成该表前 N 条导出文本（SQL/CSV/NDJSON） */
+  convertPreviewExportContent: 'convert:preview-export-content',
   /** 格式转换重置：清空主进程旧会话缓存（前端重置按钮调用） */
   convertResetSession: 'convert:reset-session',
   // 数据分析（数据工作台 Tab「数据分析」）
@@ -304,6 +306,14 @@ export interface ExportPreviewResult {
   targetKind: ExportTargetKind
   outputDir: string
   configHash: string
+}
+
+export interface ExportPreviewContentResult {
+  /** 前 N 条导出文本（与真实导出内容一致的示例） */
+  content: string
+  maxRows: number
+  /** 该表总数据行数 */
+  totalRows: number
 }
 
 export interface ConfirmExportPayload {
