@@ -2,6 +2,7 @@ import { createReadStream, openSync, readSync, closeSync } from 'node:fs'
 import { parse } from 'csv-parse'
 import iconv from 'iconv-lite'
 import { detectEncoding } from '../parsers/encoding'
+import { resolveSharedFormula } from './excel-refs'
 
 /** exceljs 体积大、加载约 8s，仅在真正导出 Excel 时惰性加载 */
 let exceljsPromise: Promise<typeof import('exceljs')> | null = null
@@ -165,7 +166,9 @@ function streamExcel(
         for (let c = 1; c <= cellCount; c++) {
           const cell = wsRow.getCell(c)
           const merged = mergeMap.get(`${r}:${c}`)
-          out.push(normalizeCell(merged !== undefined ? merged : cell.value, opts.formulaMode))
+          const raw = merged !== undefined ? merged : cell.value
+          const resolved = opts.formulaMode === 'formula' ? resolveSharedFormula(ws, r, c, raw) : raw
+          out.push(normalizeCell(resolved, opts.formulaMode))
         }
         if (out.every((v) => v === null)) {
           index++

@@ -1,4 +1,5 @@
 import type { Workbook } from 'exceljs'
+import { resolveSharedFormula } from '../convert/excel-refs'
 
 /** exceljs 体积大、加载约 8s，仅在真正解析 Excel 时惰性加载 */
 let exceljsPromise: Promise<typeof import('exceljs')> | null = null
@@ -104,9 +105,10 @@ function readSheetRows(
       const cell = wsRow.getCell(c)
       const mergedVal = mergeMap.get(`${r}:${c}`)
       const raw = mergedVal !== undefined ? mergedVal : cell.value
-      if (typeof raw === 'object' && raw !== null && 'formula' in raw) hasFormulas = true
+      if (typeof raw === 'object' && raw !== null && ('formula' in raw || 'sharedFormula' in raw)) hasFormulas = true
       if (cell.note) hasNotes = true
-      out.push(normalizeCell(raw, opts.formulaMode))
+      const resolved = opts.formulaMode === 'formula' ? resolveSharedFormula(ws, r, c, raw) : raw
+      out.push(normalizeCell(resolved, opts.formulaMode))
     }
     if (out.every((v) => v === null)) continue
     if (previewRows.length < PREVIEW_LIMIT) previewRows.push(out)
