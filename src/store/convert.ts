@@ -31,6 +31,9 @@ export const useConvertStore = defineStore('convert', {
   }),
   actions: {
     setParsed(parsed: ParseResult): void {
+      // 重建 sheet 配置时继承旧配置（表头行/公式/合并/表名/勾选），
+      // 否则每次重采样都会把用户设置重置为默认
+      const prev = this.sheetConfigs
       this.workbook = parsed.workbook
       this.inspects = parsed.inspects
       this.sheetConfigs = {}
@@ -40,14 +43,15 @@ export const useConvertStore = defineStore('convert', {
         if (inspect) {
           for (const col of inspect.columns) columnTypes[col.index] = col.inferredType
         }
+        const old = prev[sheet.id]
         this.sheetConfigs[sheet.id] = {
           sheetId: sheet.id,
-          include: !sheet.hidden,
-          tableName: sheet.name,
+          include: old ? old.include : !sheet.hidden,
+          tableName: old?.tableName ?? sheet.name,
           columnTypes,
-          formulaMode: 'value',
-          mergeMode: 'fill',
-          headerRowIndex: 0
+          formulaMode: old?.formulaMode ?? 'value',
+          mergeMode: old?.mergeMode ?? 'fill',
+          headerRowIndex: old?.headerRowIndex ?? 0
         }
       }
     },

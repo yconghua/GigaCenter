@@ -36,7 +36,7 @@ import type { TempManager } from '../temp/temp-manager'
 import type { TaskManager } from '../task/task-manager'
 import type { ConfigStore } from '../config/store'
 import type { PathWhitelist } from '../security/path-whitelist'
-import { buildExportPreview } from '../convert/convert-core'
+import { buildExportPreview, inspectSheetFile } from '../convert/convert-core'
 import type { ParsedSource } from '../convert/convert-core'
 import { createSession, getSession, closeSession, closeAllSessions, touchSession, closeExpiredSessions } from '../analyze/session'
 import { listObjects, getSchema, previewTable } from '../analyze/analyze-core'
@@ -280,9 +280,29 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return runParseTask(payload.filePath, deps)
   })
 
-  ipcMain.handle(IPC_CHANNELS.convertInspectSheet, (_e, payload: InspectSheetPayload) => {
-    // 表头行/公式/合并模式变化会影响样本显示，重新解析源文件
-    return runParseTask(payload.filePath, deps)
+  ipcMain.handle(IPC_CHANNELS.convertInspectSheet, async (_e, payload: InspectSheetPayload) => {
+    // 表头行/公式/合并模式变化：按参数重采样目标工作表，覆盖会话预览，导出预览同步生效
+    const session = convertState.session
+    if (!session || session.filePath !== payload.filePath) {
+      return fail('SOURCE_NOT_PARSED', '请先解析源文件再调整预览')
+    }
+    try {
+      const meta = session.parsed.workbook.sheets.find((s) => s.id === payload.sheetId)
+      const inspect = await inspectSheetFile(
+        payload.filePath,
+        payload.sheetId,
+        meta?.name ?? `Sheet ${payload.sheetId + 1}`,
+        {
+          headerRowIndex: payload.headerRowIndex,
+          formulaMode: payload.formulaMode,
+          mergeMode: payload.mergeMode
+        }
+      )
+      session.parsed.inspects[payload.sheetId] = inspect
+      return ok({ workbook: session.parsed.workbook, inspects: session.parsed.inspects })
+    } catch (err) {
+      return fail('INSPECT_FAILED', `重新解析失败：${String(err instanceof Error ? err.message : err)}`)
+    }
   })
 
   ipcMain.handle(

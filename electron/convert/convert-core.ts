@@ -16,6 +16,7 @@ import { parseCsvFile } from '../parsers/csv-parser'
 import { readExcelWorkbook } from '../parsers/excel-parser'
 import { sanitizeFileName, sanitizeIdentifier, uniqueIdentifier } from '../core/path-utils'
 import { checkDiskSpace } from '../core/atomic-write'
+import { streamSheetRows } from './source-stream'
 
 /** 格式转换编排：解析源文件（worker 内调用）、构建预览、一致性检查、配置快照 */
 
@@ -122,6 +123,40 @@ export function buildColumns(
     })
   }
   return columns
+}
+
+/** 表头行/公式/合并模式调整后的工作表重采样：走与导出同一套流式读取，
+ *  保证页面预览、导出预览与实际导出的列名一致。 */
+export async function inspectSheetFile(
+  filePath: string,
+  sheetId: number,
+  sheetName: string,
+  opts: { headerRowIndex: number; formulaMode: 'value' | 'formula'; mergeMode: 'fill' | 'blank' }
+): Promise<SheetInspectResult> {
+  let header: (string | null)[] | null = null
+  const rows: (string | null)[][] = []
+  await streamSheetRows(
+    filePath,
+    sheetId,
+    opts,
+    (h) => {
+      header = h
+    },
+    (row) => {
+      if (rows.length < 50) rows.push(row)
+    },
+    () => false,
+    () => undefined
+  )
+  // header 前的行被流式跳过；header 与数据行合并为样本后按第 0 行重建列信息
+  const sampleRows = header ? [header, ...rows] : rows
+  return {
+    sheetId,
+    sheetName,
+    columns: buildColumns(sampleRows, 0),
+    rows,
+    notices: []
+  }
 }
 
 /** 各目标方言支持的列类型（全集映射，无"不支持"类型，全类型可表达） */
