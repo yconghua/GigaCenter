@@ -152,6 +152,7 @@ async function openProbeModal(paths: string[]): Promise<void> {
     const dialogId = feedback.pushModal({
       title: '导入前确认：表名与列名',
       component: ImportPreviewModal,
+      width: 'max-w-[1400px]',
       componentProps: {
         files,
         onConfirm: (mappedFiles: AnalyzeImportPayload['files']) => {

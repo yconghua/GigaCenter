@@ -36,6 +36,8 @@ export interface DialogItem {
   /** 业务模态：自定义内容组件 */
   component?: unknown
   componentProps?: Record<string, unknown>
+  /** 业务模态宽度（Tailwind 宽度类），缺省 max-w-2xl */
+  width?: string
 }
 
 let nextId = 1
@@ -132,6 +134,7 @@ export const useFeedbackStore = defineStore('feedback', {
       title: string
       component: unknown
       componentProps?: Record<string, unknown>
+      width?: string
     }): number {
       const id = nextId++
       this.dialogs.push({
@@ -141,7 +144,8 @@ export const useFeedbackStore = defineStore('feedback', {
         message: '',
         primaryLabel: '',
         component: options.component,
-        componentProps: options.componentProps
+        componentProps: options.componentProps,
+        width: options.width
       })
       return id
     },

@@ -39,7 +39,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     <div v-if="top" class="fixed inset-0 z-40 flex items-center justify-center bg-[var(--c-text)]/50 p-4">
       <div
         class="w-full overflow-hidden rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] p-4 shadow-xl"
-        :class="top.kind === 'modal' ? 'max-w-2xl' : 'max-w-md'"
+        :class="top.kind === 'modal' ? (top.width ?? 'max-w-2xl') : 'max-w-md'"
       >
         <template v-if="top.kind === 'modal' && top.component">
           <div class="mb-3 flex items-center justify-between">
