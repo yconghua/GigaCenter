@@ -12,6 +12,8 @@ interface BeginOptions {
   title: string
   page: TaskPage
   sessionId?: string
+  /** 任务详情（操作参数），随 task-begin/task-done/task-failed 写入日志 */
+  detail?: Record<string, unknown>
 }
 
 function isActive(status: TaskStatus): boolean {
@@ -62,9 +64,10 @@ export class TaskManager {
       elapsedMs: 0,
       warnings: [],
       message: '',
-      startedAt: now
+      startedAt: now,
+      detail: options.detail
     })
-    logger.info('[event=task-begin]', { taskId: options.taskId, page: options.page, title: options.title, sessionId: options.sessionId })
+    logger.info('[event=task-begin]', { taskId: options.taskId, page: options.page, title: options.title, sessionId: options.sessionId, detail: options.detail })
     this.push('task-progress', options.taskId, options.sessionId, 'starting', {})
     return true
   }
@@ -118,7 +121,7 @@ export class TaskManager {
   done(taskId: string, message = ''): TaskSnapshot | null {
     const snapshot = this.finish(taskId, 'done', message)
     if (snapshot) {
-      logger.info('[event=task-done]', { taskId: snapshot.taskId, page: snapshot.page, title: snapshot.title, elapsedMs: snapshot.elapsedMs, message })
+      logger.info('[event=task-done]', { taskId: snapshot.taskId, page: snapshot.page, title: snapshot.title, elapsedMs: snapshot.elapsedMs, message, detail: snapshot.detail })
       this.push('task-done', taskId, undefined, snapshot.phase, { message })
     }
     return snapshot
@@ -127,7 +130,7 @@ export class TaskManager {
   fail(taskId: string, code: string, message: string): TaskSnapshot | null {
     const snapshot = this.finish(taskId, 'failed', message)
     if (snapshot) {
-      logger.warn('[event=task-failed]', { taskId: snapshot.taskId, page: snapshot.page, title: snapshot.title, code, message, elapsedMs: snapshot.elapsedMs })
+      logger.warn('[event=task-failed]', { taskId: snapshot.taskId, page: snapshot.page, title: snapshot.title, code, message, elapsedMs: snapshot.elapsedMs, detail: snapshot.detail })
       this.push('task-error', taskId, undefined, snapshot.phase, { code, message })
     }
     return snapshot
@@ -142,7 +145,7 @@ export class TaskManager {
       if (!t) continue
       t.status = 'cancelled'
       const snapshot = { ...t }
-      logger.info('[event=task-cancelled]', { taskId: snapshot.taskId, page: snapshot.page, title: snapshot.title, elapsedMs: snapshot.elapsedMs })
+      logger.info('[event=task-cancelled]', { taskId: snapshot.taskId, page: snapshot.page, title: snapshot.title, elapsedMs: snapshot.elapsedMs, detail: snapshot.detail })
       this.push('task-cancelled', id, undefined, snapshot.phase, {
         message: '任务已取消'
       })

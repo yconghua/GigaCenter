@@ -331,7 +331,18 @@ export function registerIpcHandlers(deps: IpcDeps): void {
         )
       })
       // 预览确认阶段占住本页任务（awaiting_confirm 独立状态）
-      if (!tasks.begin({ taskId, title: '导出预览', page: 'convert' })) {
+      if (!tasks.begin({
+        taskId,
+        title: '导出预览',
+        page: 'convert',
+        detail: {
+          action: 'export-preview',
+          targetKind: preview.targetKind,
+          sheets: preview.files.map((f) => f.sheetName),
+          totalRows: preview.files.reduce((s, f) => s + (f.rowCount ?? 0), 0),
+          outputDir: preview.outputDir
+        }
+      })) {
         return fail('TASK_BUSY', '格式转换已有任务运行中，请等待或取消')
       }
       tasks.awaitConfirm(taskId)
@@ -714,11 +725,21 @@ async function runParseTask(
     return fail('UNSUPPORTED_XLS', '不支持 .xls 旧格式，请用 Excel/WPS 将文件另存为 .xlsx 后导入')
   }
   const taskId = randomUUID()
-  if (!tasks.begin({ taskId, title: `解析 ${path.basename(filePath)}`, page: 'convert' })) {
+  const stat = fs.statSync(filePath)
+  if (!tasks.begin({
+    taskId,
+    title: `解析 ${path.basename(filePath)}`,
+    page: 'convert',
+    detail: {
+      action: 'parse',
+      fileName: path.basename(filePath),
+      fileSize: stat.size,
+      ext
+    }
+  })) {
     return fail('TASK_BUSY', '格式转换已有任务运行中，请等待或取消')
   }
   const startedAt = Date.now()
-  const stat = fs.statSync(filePath)
   logger.info('[event=file-parse]', { taskId, fileName: path.basename(filePath), fileSize: stat.size, ext })
 
   return await new Promise<Result<{ workbook: WorkbookInfo; inspects: Record<number, SheetInspectResult> }>>((resolve) => {
@@ -840,7 +861,16 @@ function runImportTask(payload: AnalyzeImportPayload, deps: IpcDeps): Promise<Re
     }
     touchSession(session.sessionId)
     const taskId = randomUUID()
-    if (!deps.tasks.begin({ taskId, title: '导入数据', page: 'analyze', sessionId: session.sessionId })) {
+    if (!deps.tasks.begin({
+      taskId,
+      title: '导入数据',
+      page: 'analyze',
+      sessionId: session.sessionId,
+      detail: {
+        action: 'import',
+        files: payload.files.map((f) => path.basename(f.filePath))
+      }
+    })) {
       if (!payload.sessionId) closeSession(session.sessionId)
       resolve(fail('TASK_BUSY', '数据分析已有任务运行中，请等待或取消'))
       return
@@ -920,7 +950,19 @@ function runQueryTask(payload: AnalyzeRunQueryPayload, deps: IpcDeps): Promise<R
       return
     }
     const taskId = randomUUID()
-    if (!deps.tasks.begin({ taskId, title: '执行查询', page: 'analyze', sessionId: payload.sessionId })) {
+    if (!deps.tasks.begin({
+      taskId,
+      title: '执行查询',
+      page: 'analyze',
+      sessionId: payload.sessionId,
+      detail: {
+        action: 'query',
+        // SQL 全文含业务数据，只记录语句类型与条数
+        sqlKinds: check.statements.map((s) => s.kind),
+        statementCount: check.statements.length,
+        limit: payload.limit ?? 100000
+      }
+    })) {
       resolve(fail('TASK_BUSY', '数据分析已有任务运行中，请等待或取消'))
       return
     }
@@ -993,7 +1035,17 @@ function runExportTask(payload: AnalyzeExportPayload, deps: IpcDeps): Promise<Re
       return
     }
     const taskId = randomUUID()
-    if (!deps.tasks.begin({ taskId, title: '导出结果', page: 'analyze', sessionId: payload.sessionId })) {
+    if (!deps.tasks.begin({
+      taskId,
+      title: '导出结果',
+      page: 'analyze',
+      sessionId: payload.sessionId,
+      detail: {
+        action: 'export',
+        targetKind: payload.targetKind,
+        fileName: path.basename(payload.outputPath)
+      }
+    })) {
       resolve(fail('TASK_BUSY', '数据分析已有任务运行中，请等待或取消'))
       return
     }

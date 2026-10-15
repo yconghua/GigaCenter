@@ -159,6 +159,8 @@ export interface TaskSnapshot {
   warnings: string[]
   message: string
   startedAt: number
+  /** 任务详情（操作参数），用于日志回溯 */
+  detail?: Record<string, unknown>
 }
 
 export type TaskEventType =
