@@ -300,6 +300,16 @@ async function onResetSession(): Promise<void> {
           <div class="flex items-center gap-2">
             <span class="h-4 w-1 shrink-0 rounded-full bg-[var(--c-accent)]"></span>
             <span class="font-semibold text-[var(--c-text)]">「{{ currentSheetMeta?.name }}」预览（前 50 行）</span>
+            <label class="text-xs text-[var(--c-text-2)]">
+              表名：
+              <input
+                class="w-28 rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-1 py-0.5 text-xs"
+                :disabled="convert.locked"
+                :value="currentCfg.tableName"
+                :title="currentSheetMeta?.name"
+                @change="(e) => convert.setTableName(currentSheetId as number, (e.target as HTMLInputElement).value)"
+              />
+            </label>
           </div>
           <template v-if="isExcel">
             <label class="text-xs text-[var(--c-text-2)]">
