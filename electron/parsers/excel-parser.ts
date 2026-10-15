@@ -129,7 +129,7 @@ function normalizeCell(value: unknown, formulaMode: 'value' | 'formula'): string
   if (typeof value === 'object') {
     if (value instanceof Date) return toIso(value)
     if (value instanceof Buffer) return `0x${value.toString('hex')}`
-    if ('formula' in value && typeof value === 'object') {
+    if (('formula' in value || 'sharedFormula' in value) && typeof value === 'object') {
       const f = value as { formula?: string; result?: unknown }
       if (formulaMode === 'formula' && typeof f.formula === 'string') return f.formula
       const result = f.result
@@ -137,13 +137,20 @@ function normalizeCell(value: unknown, formulaMode: 'value' | 'formula'): string
     }
     if ('richText' in value) {
       const rt = (value as { richText: { text: string }[] }).richText
-      return rt.map((p) => p.text).join('')
+      return rt.map((p) => p.text ?? '').join('')
     }
-    if ('text' in value && typeof (value as { text: unknown }).text === 'string') {
-      return (value as { text: string }).text
+    if ('text' in value && (value as { text: unknown }).text !== undefined && (value as { text: unknown }).text !== null) {
+      return normalizeCell((value as { text: unknown }).text, formulaMode)
+    }
+    if ('value' in value) {
+      return normalizeCell((value as { value: unknown }).value, formulaMode)
     }
     if ('error' in value) return String((value as { error: unknown }).error)
-    return String(value)
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return String(value)
+    }
   }
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : ''
   if (typeof value === 'boolean') return value ? 'true' : 'false'
