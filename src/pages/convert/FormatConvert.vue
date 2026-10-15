@@ -276,14 +276,16 @@ async function onResetSession(): Promise<void> {
             :key="sheet.id"
             class="flex cursor-pointer items-center gap-2 rounded border border-[var(--c-border)] px-2 py-1.5 text-sm"
             :class="currentSheetId === sheet.id ? 'border-[var(--c-primary)]' : ''"
+            @click="currentSheetId = sheet.id"
           >
             <input
               type="checkbox"
               :checked="convert.sheetConfigs[sheet.id]?.include"
               :disabled="!sheetSelectable"
+              @click.stop
               @change="(e) => convert.toggleSheet(sheet.id, (e.target as HTMLInputElement).checked)"
             />
-            <span class="truncate text-[var(--c-text)]" @click="currentSheetId = sheet.id">
+            <span class="truncate text-[var(--c-text)]">
               {{ sheet.name }}
             </span>
             <span class="ml-auto text-xs text-[var(--c-text-2)]">{{ sheet.rowCount }} 行 × {{ sheet.colCount }} 列</span>
