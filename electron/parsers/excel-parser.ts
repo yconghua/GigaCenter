@@ -65,7 +65,8 @@ function readSheetRows(
   meta: ExcelSheetMeta,
   opts: ExcelSheetReadOptions
 ): ExcelSheetReadResult {
-  const ws = wb.getWorksheet(meta.id + 1)
+  // meta.id 为工作表数组下标；不能 getWorksheet(id+1)：文件删除过工作表时 id 有空洞会取不到
+  const ws = wb.worksheets[meta.id]
   const notices: string[] = []
   if (!ws) {
     return { meta, previewRows: [], sampleRows: [], notices: ['工作表不存在'] }

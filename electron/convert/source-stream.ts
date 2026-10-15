@@ -129,7 +129,9 @@ function streamExcel(
       const ExcelJS = await getExcelJS()
       const wb = new ExcelJS.Workbook()
       await wb.xlsx.readFile(filePath)
-      const ws = wb.getWorksheet(sheetId + 1)
+      // sheetId 为工作表数组下标（与 workbook.sheets 的 id 一致）；
+      // 不能 getWorksheet(id+1)：文件删除过工作表时 id 有空洞会取不到
+      const ws = wb.worksheets[sheetId]
       if (!ws) {
         reject(new Error('工作表不存在'))
         return
