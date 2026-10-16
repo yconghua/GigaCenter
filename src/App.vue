@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useTaskStore } from '@/store/task'
 import { applyFontScale, applyTheme } from '@/theme'
@@ -10,6 +10,8 @@ import BannerHost from '@/components/feedback/BannerHost.vue'
 
 const route = useRoute()
 const task = useTaskStore()
+// 顶栏版本号实时读取主进程 app.getVersion()（读 package.json），不写死
+const appVersion = ref('')
 
 // 启动时应用持久化主题与字号设置；跟随系统档时，后续系统主题切换由主进程 nativeTheme 事件推送。
 async function initTheme(): Promise<void> {
@@ -17,7 +19,10 @@ async function initTheme(): Promise<void> {
     window.gigacenter.invoke<AppInfo>('app:get-app-info'),
     window.gigacenter.invoke<AppPreferences>('settings:get')
   ])
-  if (infoRes.ok) applyTheme(infoRes.value.resolvedTheme)
+  if (infoRes.ok) {
+    applyTheme(infoRes.value.resolvedTheme)
+    appVersion.value = infoRes.value.appVersion
+  }
   if (prefsRes.ok) applyFontScale(prefsRes.value.fontSize ?? 14)
   window.gigacenter.on('event:native-theme', (payload) => {
     const p = payload as { theme: 'light' | 'dark' } | null
@@ -38,7 +43,7 @@ onMounted(() => {
         <img src="@/assets/logo/logo.png" alt="logo" class="h-8 w-8 object-contain" />
         <span class="text-base font-semibold">{{ $t('app.title') }}</span>
       </div>
-      <div class="text-sm text-[var(--c-text-2)]">v0.1.0</div>
+      <div class="text-sm text-[var(--c-text-2)]">v{{ appVersion }}</div>
     </header>
     <div class="flex min-h-0 flex-1">
       <nav class="w-44 shrink-0 border-r border-[var(--c-border-strong)] bg-[var(--c-surface)] p-2">

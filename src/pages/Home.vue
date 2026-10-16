@@ -1,15 +1,21 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import type { AppPreferences } from '@shared/ipc-types'
+import type { AppInfo, AppPreferences } from '@shared/ipc-types'
 
 // 快捷键在首页表格中的展示顺序；中文名通过 $t('home.sc.xxx') 取 i18n 词条。
 const SHORTCUT_ORDER = ['runQuery', 'runSelected', 'formatSql', 'exportResult', 'openFile', 'openSettings', 'cancel'] as const
 
 const shortcuts = ref<Record<string, string>>({})
+// 版本号实时读取主进程 app.getVersion()（读 package.json），不写死
+const appVersion = ref('')
 
 onMounted(async () => {
-  const res = await window.gigacenter.invoke<AppPreferences>('settings:get')
-  if (res.ok) shortcuts.value = res.value.shortcuts ?? {}
+  const [prefsRes, infoRes] = await Promise.all([
+    window.gigacenter.invoke<AppPreferences>('settings:get'),
+    window.gigacenter.invoke<AppInfo>('app:get-app-info')
+  ])
+  if (prefsRes.ok) shortcuts.value = prefsRes.value.shortcuts ?? {}
+  if (infoRes.ok) appVersion.value = infoRes.value.appVersion
 })
 </script>
 
@@ -20,7 +26,7 @@ onMounted(async () => {
       <img src="@/assets/logo/logo.png" alt="logo" class="h-16 w-16 object-contain" />
       <h1 class="mt-4 text-2xl font-bold">{{ $t('app.title') }}</h1>
       <p class="mt-2 text-sm text-[var(--c-text-2)]">{{ $t('home.tagline') }}</p>
-      <p class="mt-1 text-xs text-[var(--c-text-3)]">{{ $t('home.version') }} v0.1.0</p>
+      <p class="mt-1 text-xs text-[var(--c-text-3)]">{{ $t('home.version') }} v{{ appVersion }}</p>
     </div>
 
     <!-- 产品介绍 -->
