@@ -358,7 +358,7 @@ async function onResetAnalyze(): Promise<void> {
     <p v-if="importError" class="rounded border border-[var(--c-danger)] bg-[var(--c-danger-soft)] px-3 py-1 text-xs text-[var(--c-danger)]">
       {{ importError }}
     </p>
-    <p v-if="analyze.warnings.length > 0" class="max-h-20 overflow-auto rounded border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs text-amber-300">
+    <p v-if="analyze.warnings.length > 0" class="max-h-20 overflow-auto rounded border border-[var(--c-warn)] bg-[var(--c-warn-soft)] px-3 py-1 text-xs text-[var(--c-warn)]">
       <span v-for="(w, i) in analyze.warnings" :key="i" class="block">{{ w }}</span>
     </p>
 
