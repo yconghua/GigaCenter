@@ -238,17 +238,17 @@ async function onResetSession(): Promise<void> {
       v-if="task.convert && (task.convert.status === 'running' || task.convert.status === 'cancelling')"
       class="mb-3 flex items-center gap-3 rounded border border-[var(--c-border-strong)] bg-[var(--c-surface-2)] px-3 py-2 text-sm"
     >
-      <div class="w-40 truncate text-[var(--c-text)]">{{ task.convert.title }}</div>
-      <div class="w-48 truncate text-xs text-[var(--c-text-2)]">
+      <div class="w-40 truncate font-semibold text-[var(--c-text)]">{{ task.convert.title }}</div>
+      <div class="w-48 truncate text-xs font-semibold text-[var(--c-accent)]">
         {{ task.convert.currentStep || task.convert.phase }}
       </div>
-      <div class="h-1.5 flex-1 overflow-hidden rounded bg-[var(--c-surface-2)]">
-        <div class="h-full bg-[var(--c-primary)] transition-all" :style="{ width: `${taskPercent}%` }" />
+      <div class="h-2 flex-1 overflow-hidden rounded bg-[var(--c-surface-2)]">
+        <div class="h-full bg-[var(--c-accent)] transition-all" :style="{ width: `${taskPercent}%` }" />
       </div>
-      <div v-if="task.convert.total > 0" class="text-xs text-[var(--c-text-2)]">
+      <div v-if="task.convert.total > 0" class="text-xs font-semibold text-[var(--c-accent)]">
         {{ task.convert.done }}/{{ task.convert.total }}
       </div>
-      <div v-else-if="task.convert.done > 0" class="text-xs text-[var(--c-text-2)]">
+      <div v-else-if="task.convert.done > 0" class="text-xs font-semibold text-[var(--c-accent)]">
         已处理 {{ task.convert.done }} 行
       </div>
       <button

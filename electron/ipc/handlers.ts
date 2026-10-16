@@ -601,8 +601,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
         {
           name: '数据文件',
           extensions: ['sqlite', 'db', 'sqlite3', 'csv', 'txt', 'json', 'xlsx', 'sql', 'bson']
-        },
-        { name: '所有文件', extensions: ['*'] }
+        }
       ]
     })
     if (result.canceled || result.filePaths.length === 0) {

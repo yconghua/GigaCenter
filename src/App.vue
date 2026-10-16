@@ -77,7 +77,8 @@ onMounted(() => {
       </nav>
       <main class="flex min-w-0 flex-1 flex-col overflow-auto">
         <BannerHost />
-        <div class="min-w-0 flex-1">
+        <!-- min-h-0：约束路由容器高度，使 h-full 页面（数据分析等）填满可视区并内部滚动，不撑出最外层滚动条 -->
+        <div class="min-h-0 min-w-0 flex-1">
           <router-view />
         </div>
       </main>
