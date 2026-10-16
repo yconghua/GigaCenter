@@ -72,13 +72,15 @@ export class PythonWorker {
   /** 启动子进程；已存活则跳过（会话变量保留） */
   private ensureStarted(): void {
     if (this.isAlive()) return
-    // 隔离系统 Python 干扰：清空 PYTHONHOME/PYTHONPATH，强制 UTF-8 输出，注入会话目录
+    // 隔离系统 Python 干扰：清空 PYTHONHOME/PYTHONPATH，强制 UTF-8 输出，注入会话目录；
+    // matplotlib 字体缓存写入会话目录（避免依赖用户主目录权限，重置会话时一并清理）
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       PYTHONHOME: '',
       PYTHONPATH: '',
       PYTHONUTF8: '1',
       PYTHONIOENCODING: 'utf-8',
+      MPLCONFIGDIR: this.sessionDir,
       GIGACENTER_SESSION_DIR: this.sessionDir
     }
     this.child = spawn(this.pythonPath, [this.execScript], {

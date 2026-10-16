@@ -136,13 +136,15 @@ def _load_registered():
 
 
 _PREAMBLE = """
+import io
+import base64
 import pandas as pd
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 _giga_blocks = []
-_giga_last_table = _GIGA_GLOBALS.get("_giga_last_table", None)
+_giga_last_table = globals().get("_giga_last_table", None)
 def giga_table(df, max_rows=10000):
     import pandas as _pd
     df = _pd.DataFrame(df)

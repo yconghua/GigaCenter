@@ -8,7 +8,7 @@
     "dev": "vite",
     "dev:app": "npm run build:main && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
     "build": "vue-tsc --noEmit && vite build",
-    "build:main": "tsc -p tsconfig.electron.json",
+    "build:main": "tsc -p tsconfig.electron.json && node -e \"const fs=require('fs');fs.mkdirSync('dist-electron/electron/python',{recursive:true});fs.copyFileSync('electron/python/giga_exec.py','dist-electron/electron/python/giga_exec.py')\"",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "start": "npm run build:main && electron .",
     "lint": "eslint .",
