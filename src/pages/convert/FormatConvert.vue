@@ -391,11 +391,11 @@ async function onResetSession(): Promise<void> {
         <div class="max-h-96 overflow-auto">
           <table class="w-full border-separate border-spacing-0 text-xs" style="table-layout: fixed">
             <colgroup>
-              <col :style="colWidths[-1] ? { width: colWidths[-1] + 'px' } : {}" />
+              <col :style="colWidths[-1] ? { width: colWidths[-1] + 'px' } : { width: '48px' }" />
               <col
                 v-for="col in currentInspect.columns"
                 :key="col.index"
-                :style="colWidths[col.index] ? { width: colWidths[col.index] + 'px' } : {}"
+                :style="colWidths[col.index] ? { width: colWidths[col.index] + 'px' } : { width: '120px' }"
               />
             </colgroup>
             <thead>

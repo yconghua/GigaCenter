@@ -49,14 +49,14 @@ function showExportContent(sheetId: number): void {
       <div class="mb-1 text-xs font-semibold text-[var(--c-text-2)]">将生成 {{ props.preview.files.length }} 个文件（目录：{{ props.preview.outputDir }}），点击行查看导出内容</div>
       <div class="overflow-auto rounded border border-[var(--c-border)]">
         <table class="w-full border-collapse text-xs">
-          <thead>
-            <tr class="bg-[var(--c-surface-2)] text-left text-[var(--c-text-2)]">
-              <th class="border border-[var(--c-border)] px-2 py-1">文件名</th>
-              <th class="border border-[var(--c-border)] px-2 py-1">工作表</th>
-              <th class="border border-[var(--c-border)] px-2 py-1">表名</th>
-              <th class="border border-[var(--c-border)] px-2 py-1">行数</th>
-              <th class="border border-[var(--c-border)] px-2 py-1">列数</th>
-              <th class="border border-[var(--c-border)] px-2 py-1">导出内容</th>
+          <thead class="sticky top-0">
+            <tr class="text-left text-[var(--c-text-2)]">
+              <th class="border border-[var(--c-border)] bg-[var(--c-surface-2)] px-2 py-1">文件名</th>
+              <th class="border border-[var(--c-border)] bg-[var(--c-surface-2)] px-2 py-1">工作表</th>
+              <th class="border border-[var(--c-border)] bg-[var(--c-surface-2)] px-2 py-1">表名</th>
+              <th class="border border-[var(--c-border)] bg-[var(--c-surface-2)] px-2 py-1">行数</th>
+              <th class="border border-[var(--c-border)] bg-[var(--c-surface-2)] px-2 py-1">列数</th>
+              <th class="border border-[var(--c-border)] bg-[var(--c-surface-2)] px-2 py-1">导出内容</th>
             </tr>
           </thead>
           <tbody>
@@ -66,9 +66,9 @@ function showExportContent(sheetId: number): void {
               class="cursor-pointer odd:bg-[var(--c-bg)] hover:bg-[var(--c-surface-2)]"
               @click="showExportContent(f.sheetId)"
             >
-              <td class="border border-[var(--c-border)] px-2 py-1">{{ f.fileName }}</td>
-              <td class="border border-[var(--c-border)] px-2 py-1">{{ f.sheetName }}</td>
-              <td class="border border-[var(--c-border)] px-2 py-1">{{ f.tableName }}</td>
+              <td class="max-w-48 truncate border border-[var(--c-border)] px-2 py-1" :title="f.fileName">{{ f.fileName }}</td>
+              <td class="max-w-40 truncate border border-[var(--c-border)] px-2 py-1" :title="f.sheetName">{{ f.sheetName }}</td>
+              <td class="max-w-32 truncate border border-[var(--c-border)] px-2 py-1" :title="f.tableName">{{ f.tableName }}</td>
               <td class="border border-[var(--c-border)] px-2 py-1">{{ f.rowCount }}</td>
               <td class="border border-[var(--c-border)] px-2 py-1">{{ f.colCount }}</td>
               <td class="border border-[var(--c-border)] px-2 py-1 text-[var(--c-accent)]">查看 →</td>
