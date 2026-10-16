@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
+import { isPgDump, convertPgDump } from './pg-compat'
 import iconv from 'iconv-lite'
 import { parse } from 'csv-parse'
 import { parse as parseSync } from 'csv-parse/sync'
@@ -189,8 +190,11 @@ async function probeSqlite(sourcePath: string): Promise<ProbeTableInfo[]> {
 }
 
 async function probeSqlDump(sourcePath: string): Promise<ProbeTableInfo[]> {
-  const raw = fs.readFileSync(sourcePath, 'utf8')
-  const statements = splitSqlStatements(raw)
+  // 与导入执行一致：编码探测解码；PG dump 先做方言转换再提取建表结构
+  const buf = fs.readFileSync(sourcePath)
+  const { encoding } = detectEncoding(buf)
+  const decoded = iconv.decode(buf, encoding)
+  const statements = isPgDump(decoded) ? convertPgDump(decoded).statements : splitSqlStatements(decoded)
   const out: ProbeTableInfo[] = []
   for (const stmt of statements) {
     const s = stmt.trim()
@@ -557,8 +561,21 @@ async function importSqlDumpMapped(
   opts: ImportOptions
 ): Promise<AnalyzeTableInfo[]> {
   const sourcePath = group[0].filePath
-  const raw = fs.readFileSync(sourcePath, 'utf8')
-  const statements = splitSqlStatements(raw)
+  // SQL 文件按编码探测解码（pg_dump 默认 UTF-8，Windows 下导出可能为 GBK 等）
+  const buf = fs.readFileSync(sourcePath)
+  const { encoding } = detectEncoding(buf)
+  const raw = iconv.decode(buf, encoding)
+  // PostgreSQL dump 先做方言转换（COPY→INSERT、去 SET/授权/序列、类型映射），否则按原样执行
+  let statements: string[]
+  if (isPgDump(raw)) {
+    const pg = convertPgDump(raw)
+    statements = pg.statements
+    if (pg.rewritten > 0 || pg.dropped > 0) {
+      warnings.push(`检测到 PostgreSQL dump：已转换 ${pg.rewritten} 条语句，丢弃 ${pg.dropped} 条不兼容语句（SET/授权/序列/函数等）`)
+    }
+  } else {
+    statements = splitSqlStatements(raw)
+  }
   const tables: AnalyzeTableInfo[] = []
   let executed = 0
   for (const stmt of statements) {
