@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import fs from 'node:fs'
@@ -230,6 +231,52 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       return ok({ path: outPath })
     } catch (err) {
       return fail('DIAGNOSTICS_FAILED', `诊断包生成失败：${String(err)}`)
+    }
+  })
+
+  // 卸载：先清临时残留，再启动延迟清理命令删除用户数据目录（日志文件被本进程占用，
+  // 需等进程退出释放句柄），最后调用 NSIS 卸载器静默卸载并退出。
+  ipcMain.handle(IPC_CHANNELS.uninstallApp, () => {
+    try {
+      // 1) 临时残留（%TEMP%\GigaCenter）：无本进程占用，立即删除
+      fs.rmSync(path.join(os.tmpdir(), 'GigaCenter'), { recursive: true, force: true })
+
+      // 2) 用户数据目录（%LOCALAPPDATA%\GigaCenter）：当前日志句柄占用，
+      //    由独立 cmd 延迟约 3 秒（ping -n 4）待本进程退出后整目录删除
+      const userData = app.getPath('userData')
+      const cleanCmd = `ping 127.0.0.1 -n 4 >nul & rmdir /s /q "${userData}"`
+      spawn('cmd.exe', ['/d', '/c', cleanCmd], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+      }).unref()
+
+      // 3) 定位 NSIS 卸载器（安装目录下 Uninstall *.exe）并静默启动
+      const exeDir = path.dirname(app.getPath('exe'))
+      let uninstaller: string | null = null
+      try {
+        const un = fs.readdirSync(exeDir).find((f) => /^Uninstall .+\.exe$/i.test(f))
+        uninstaller = un ? path.join(exeDir, un) : null
+      } catch {
+        uninstaller = null
+      }
+      if (!uninstaller) {
+        return fail('UNINSTALLER_NOT_FOUND', '未找到卸载程序（Uninstall *.exe），请从系统设置卸载')
+      }
+      spawn(uninstaller, ['/S'], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+      }).unref()
+
+      // 4) 延迟退出：确保 IPC 响应送达渲染进程后再关闭
+      setTimeout(() => {
+        app.quit()
+      }, 800)
+      return ok(null)
+    } catch (err) {
+      logger.error('uninstall failed', err)
+      return fail('UNINSTALL_FAILED', `卸载失败：${String(err)}`)
     }
   })
 

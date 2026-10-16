@@ -101,6 +101,25 @@ async function onOpenExeFolder(): Promise<void> {
   await window.gigacenter.invoke('app:open-exe-folder')
 }
 
+// 卸载程序：强确认后调主进程清理用户数据并启动系统卸载器，应用随即退出
+const uninstalling = ref(false)
+
+async function onUninstall(): Promise<void> {
+  const ok = await feedback.confirm({
+    title: '卸载程序并清除数据',
+    message: '将卸载 GigaCenter，并删除本机上的配置、日志与临时数据。此操作不可撤销，确认继续？'
+  })
+  if (!ok) return
+  uninstalling.value = true
+  const res = await window.gigacenter.invoke('settings:uninstall-app')
+  if (!res.ok) {
+    uninstalling.value = false
+    feedback.errorToast(res.error.message)
+    return
+  }
+  // 主进程已启动卸载流程，应用将自动退出
+}
+
 function formatBytes(bytes: number): string {
   if (!bytes) return '0 B'
   if (bytes < 1024) return `${bytes} B`
@@ -296,6 +315,25 @@ function formatBytes(bytes: number): string {
       >
         {{ $t('settings.clearPreferences') }}
       </button>
+    </div>
+
+    <!-- 危险操作：卸载程序并清除本机数据 -->
+    <div class="mt-4 rounded border border-[var(--c-danger)] bg-[var(--c-danger-soft)] p-3">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <div class="text-sm font-semibold text-[var(--c-danger)]">卸载程序</div>
+          <div class="mt-0.5 text-xs text-[var(--c-danger)]">
+            卸载 GigaCenter，并一并删除本机配置、日志与临时数据（不可撤销）
+          </div>
+        </div>
+        <button
+          class="shrink-0 rounded bg-[var(--c-danger)] px-3 py-1.5 text-sm text-white hover:opacity-90 disabled:opacity-50"
+          :disabled="uninstalling"
+          @click="onUninstall"
+        >
+          {{ uninstalling ? '正在卸载…' : '卸载程序并清除数据' }}
+        </button>
+      </div>
     </div>
   </div>
 </template>

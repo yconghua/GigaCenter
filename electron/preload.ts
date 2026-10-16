@@ -17,6 +17,7 @@ const allowedChannels = new Set<string>([
   'settings:set-preferences',
   'settings:clear-preferences',
   'settings:export-diagnostics',
+  'settings:uninstall-app',
   'task:get-current',
   'task:get-active',
   'task:subscribe',

@@ -28,6 +28,8 @@ export const IPC_CHANNELS = {
   clearPreferences: 'settings:clear-preferences',
   /** 打包导出诊断信息（日志/配置快照），便于反馈问题 */
   exportDiagnostics: 'settings:export-diagnostics',
+  /** 卸载程序：清理用户配置/日志/临时数据后调用系统卸载器（静默）并退出 */
+  uninstallApp: 'settings:uninstall-app',
   // 任务（事件缓冲与任务管理器阶段 1 落地，数据工作台阶段 2 接入）
   /** 取当前页面任务快照（无任务时返回 null） */
   getCurrentTask: 'task:get-current',
