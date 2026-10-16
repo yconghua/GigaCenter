@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import type { AppPreferences, PathInfo } from '@shared/ipc-types'
+import type { AppPreferences, PathInfo, PythonRuntimeInfo } from '@shared/ipc-types'
 import { useFeedbackStore } from '@/store/feedback'
 import { applyFontScale } from '@/theme'
 import { t } from '@/i18n'
@@ -8,6 +8,8 @@ import { t } from '@/i18n'
 const feedback = useFeedbackStore()
 const prefs = ref<AppPreferences | null>(null)
 const paths = ref<PathInfo | null>(null)
+const pythonRuntime = ref<PythonRuntimeInfo | null>(null)
+const pythonBusy = ref(false)
 
 const themeOptions: { value: AppPreferences['theme']; label: string; hint: string }[] = [
   { value: 'system', label: '跟随系统', hint: '随操作系统亮暗自动切换' },
@@ -39,7 +41,42 @@ onMounted(async () => {
   ])
   if (prefsRes.ok) prefs.value = prefsRes.value
   if (pathsRes.ok) paths.value = pathsRes.value
+  await refreshPythonRuntime()
 })
+
+async function refreshPythonRuntime(): Promise<void> {
+  const res = await window.gigacenter.invoke<PythonRuntimeInfo>('python:get-runtime-info')
+  if (res.ok) pythonRuntime.value = res.value
+}
+
+async function onInitPythonRuntime(): Promise<void> {
+  pythonBusy.value = true
+  const res = await window.gigacenter.invoke<PythonRuntimeInfo>('python:init-runtime')
+  pythonBusy.value = false
+  if (res.ok) {
+    pythonRuntime.value = res.value
+    feedback.success('Python 运行时已初始化，离线可用')
+  } else {
+    feedback.errorToast(res.error.message)
+  }
+}
+
+async function onUninstallPythonRuntime(): Promise<void> {
+  const ok = await feedback.confirm({
+    title: '卸载 Python 运行时',
+    message: '将删除内置 Python 运行时及其已装库（约 200-300MB）。Python 分析功能将不可用，可随时重新初始化。确认继续？'
+  })
+  if (!ok) return
+  pythonBusy.value = true
+  const res = await window.gigacenter.invoke('python:uninstall-runtime')
+  pythonBusy.value = false
+  if (res.ok) {
+    pythonRuntime.value = null
+    feedback.success('Python 运行时已删除')
+  } else {
+    feedback.errorToast(res.error.message)
+  }
+}
 
 async function copyText(text: string): Promise<void> {
   try {
@@ -315,6 +352,52 @@ function formatBytes(bytes: number): string {
       >
         {{ $t('settings.clearPreferences') }}
       </button>
+    </div>
+
+    <!-- Python 运行时 -->
+    <div class="mt-4 rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] p-3 text-sm">
+      <div class="mb-2 font-semibold">Python 运行时</div>
+      <div v-if="pythonBusy" class="text-xs text-[var(--c-text-2)]">处理中…</div>
+      <template v-else-if="pythonRuntime && pythonRuntime.status === 'ready'">
+        <div class="space-y-1 text-xs text-[var(--c-text-2)]">
+          <div class="flex justify-between gap-4">
+            <span>来源</span>
+            <span class="text-[var(--c-text)]">{{ pythonRuntime.source === 'bundled' ? '内置（随程序捆绑，离线可用）' : '开发回退' }}</span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span>版本</span>
+            <span class="font-mono text-[var(--c-text)]">{{ pythonRuntime.version || '未知' }}</span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span>已装库</span>
+            <span class="text-[var(--c-text)]">{{ pythonRuntime.libraries.length > 0 ? pythonRuntime.libraries.join('、') : '（未检测到）' }}</span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span>位置</span>
+            <span class="truncate text-[var(--c-text)]">{{ pythonRuntime.pythonPath }}</span>
+          </div>
+        </div>
+      </template>
+      <div v-else class="text-xs text-[var(--c-text-2)]">
+        未初始化。内置 Python 随安装包捆绑，首次使用需初始化一次（本地复制，离线可用）。
+      </div>
+      <div class="mt-2 flex gap-2">
+        <button
+          class="rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-3 py-1.5 text-xs hover:bg-[var(--c-surface-2)] disabled:opacity-50"
+          :disabled="pythonBusy"
+          @click="onInitPythonRuntime"
+        >
+          {{ pythonRuntime?.status === 'ready' ? '重新初始化' : '初始化运行时' }}
+        </button>
+        <button
+          v-if="pythonRuntime?.status === 'ready'"
+          class="rounded border border-[var(--c-danger-soft)] bg-[var(--c-surface)] px-3 py-1.5 text-xs text-[var(--c-danger)] hover:bg-[var(--c-danger-soft)] disabled:opacity-50"
+          :disabled="pythonBusy"
+          @click="onUninstallPythonRuntime"
+        >
+          卸载运行时
+        </button>
+      </div>
     </div>
 
     <!-- 危险操作：卸载程序并清除本机数据 -->

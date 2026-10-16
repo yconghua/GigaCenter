@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import { IPC_CHANNELS } from '../shared/ipc-types'
 import { initLogger, logger } from './log'
 import { getInstanceId, registerIpcHandlers, cancelAllActiveTasks } from './ipc/handlers'
+import { closeAllSessions as closeAllPythonSessions } from './python/session'
 import { TempManager } from './temp/temp-manager'
 import { TaskManager } from './task/task-manager'
 import { ConfigStore } from './config/store'
@@ -187,6 +188,7 @@ if (!gotLock) {
     logger.info('[event=app-quit]', { reason: 'normal' })
     // 先终止全部 worker 并终结任务，再关闭会话、清理临时目录。
     cancelAllActiveTasks()
+    closeAllPythonSessions()
     temp.dispose()
   })
 }

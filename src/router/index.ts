@@ -4,7 +4,8 @@ import FormatConvert from '@/pages/convert/FormatConvert.vue'
 import AnalyzeWorkbench from '@/pages/analyze/AnalyzeWorkbench.vue'
 import Settings from '@/pages/Settings.vue'
 
-// hash 路由：首页（介绍/使用流程）+ 格式转换 / 数据分析 独立导航页；任何未匹配路由跳回首页
+// hash 路由：首页（介绍/使用流程）+ 格式转换 / 数据分析 / Python 分析 独立导航页；任何未匹配路由跳回首页。
+// Python 分析页懒加载：首次进入才加载组件，不拖慢应用启动。
 export const router = createRouter({
   history: createWebHashHistory(),
   routes: [
@@ -12,6 +13,7 @@ export const router = createRouter({
     { path: '/home', component: Home },
     { path: '/convert', component: FormatConvert },
     { path: '/analyze', component: AnalyzeWorkbench },
+    { path: '/python', component: () => import('@/pages/python/PythonWorkbench.vue') },
     { path: '/settings', component: Settings },
     { path: '/:pathMatch(.*)*', redirect: '/home' }
   ]

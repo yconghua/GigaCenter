@@ -92,6 +92,14 @@ onUnmounted(() => {
           <span>{{ $t('nav.analyze') }}</span>
         </router-link>
         <router-link
+          to="/python"
+          class="mt-1 flex items-center gap-2 rounded px-2 py-2 text-sm transition-colors hover:bg-[var(--c-surface-2)]"
+          :class="route.path.startsWith('/python') ? 'font-medium text-[var(--c-primary)]' : 'text-[var(--c-text-2)]'"
+        >
+          <span class="h-4 w-1 shrink-0 rounded-full" :class="route.path.startsWith('/python') ? 'bg-[var(--c-primary)]' : 'bg-transparent'"></span>
+          <span>{{ $t('nav.python') }}</span>
+        </router-link>
+        <router-link
           to="/settings"
           class="mt-1 flex items-center gap-2 rounded px-2 py-2 text-sm transition-colors hover:bg-[var(--c-surface-2)]"
           :class="route.path === '/settings' ? 'font-medium text-[var(--c-primary)]' : 'text-[var(--c-text-2)]'"

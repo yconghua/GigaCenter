@@ -30,6 +30,33 @@ export const IPC_CHANNELS = {
   exportDiagnostics: 'settings:export-diagnostics',
   /** 卸载程序：清理用户配置/日志/临时数据后调用系统卸载器（静默）并退出 */
   uninstallApp: 'settings:uninstall-app',
+  // Python 分析（独立导航页）：运行时管理与会话执行
+  /** 查询 Python 运行时状态（来源/版本/已装库，结果缓存） */
+  pythonGetRuntimeInfo: 'python:get-runtime-info',
+  /** 初始化 Python 运行时：从安装目录基线复制到用户数据目录（离线可用） */
+  pythonInitRuntime: 'python:init-runtime',
+  /** 卸载 Python 运行时：删除激活目录 */
+  pythonUninstallRuntime: 'python:uninstall-runtime',
+  /** 创建 Python 分析会话（独立会话目录，Worker 懒启动） */
+  pythonCreateSession: 'python:create-session',
+  /** 重置 Python 会话：关闭旧会话（杀 Worker + 删目录）并新建 */
+  pythonResetSession: 'python:reset-session',
+  /** 执行 Python 代码：JSON over stdio，流式输出经 event:python-stream 推送 */
+  pythonRunCode: 'python:run-code',
+  /** autopep8 格式化 Python 代码（Worker 内执行，不触达运行状态） */
+  pythonFormatCode: 'python:format-code',
+  /** 导出 Python 分析结果：表格（Worker 直写后原子搬运）/ 图表 / 文本，按目标路径落盘 */
+  pythonExportResult: 'python:export-result',
+  /** Python 结果保存对话框：按导出格式给过滤器与默认文件名 */
+  pythonChooseExportFile: 'python:choose-export-file',
+  /** 取消当前 Python 执行：强杀 Worker（会话变量重置） */
+  pythonCancelRun: 'python:cancel-run',
+  /** 注册导入文件：复制到会话目录并预读注册 DataFrame 变量 */
+  pythonRegisterImport: 'python:register-import',
+  /** 更新已导入文件信息（表头行/行数/变量名） */
+  pythonUpdateImported: 'python:update-imported',
+  /** Python 执行流式输出事件（stdout/stderr 实时行） */
+  eventPythonStream: 'event:python-stream',
   // 任务（事件缓冲与任务管理器阶段 1 落地，数据工作台阶段 2 接入）
   /** 取当前页面任务快照（无任务时返回 null） */
   getCurrentTask: 'task:get-current',
@@ -178,6 +205,66 @@ export interface PathInfo {
   tempRoot: string
   sessionTempUsedBytes: number
   instanceId: string
+}
+
+// ---------- Python 分析 ----------
+
+/** Python 运行时状态（设置页与页面状态栏展示） */
+export interface PythonRuntimeInfo {
+  status: 'ready' | 'missing'
+  source: 'bundled' | 'dev' | ''
+  pythonPath: string
+  version: string
+  libraries: string[]
+  initializedAt: number | null
+}
+
+/** Python 执行结果块（输出区按序渲染：文本/表格/图表） */
+export type PythonBlock =
+  | { kind: 'text'; text: string }
+  | { kind: 'table'; columns: string[]; rows: unknown[][]; total: number }
+  | { kind: 'image'; mime: string; data: string }
+
+/** Python 代码执行结果 */
+export interface PythonRunResult {
+  ok: boolean
+  status: 'ok' | 'blocked' | 'error' | 'timeout' | 'oom' | 'crashed' | 'cancelled'
+  elapsedMs: number
+  message: string
+  blocks: PythonBlock[]
+}
+
+/** Python 会话（渲染进程侧持有 sessionId，其余由主进程管理） */
+export interface PythonSessionInfo {
+  sessionId: string
+}
+
+/** 已导入文件（会话内副本与注册信息） */
+export interface PythonImportedFileInfo {
+  id: string
+  copyName: string
+  originalName: string
+  kind: 'csv' | 'txt' | 'xlsx' | 'xls' | 'json' | 'sqlite'
+  varName: string
+  headerRow: number | null
+  rowCount: number | null
+}
+
+/** 导入文件注册请求项（复制 + 预读注册） */
+export interface PythonRegisterImportItem {
+  sourcePath: string
+  originalName: string
+  kind: 'csv' | 'txt' | 'xlsx' | 'xls' | 'json' | 'sqlite'
+  headerRow: number | null
+}
+
+/** Python 执行历史记录项 */
+export interface PythonHistoryItem {
+  id: string
+  code: string
+  at: number
+  elapsedMs: number
+  status: 'ok' | 'blocked' | 'error' | 'timeout' | 'oom' | 'crashed' | 'cancelled'
 }
 
 // ---------- 任务状态机与事件 ----------

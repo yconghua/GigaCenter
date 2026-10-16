@@ -43,6 +43,19 @@ import type { ParsedSource } from '../convert/convert-core'
 import { createSession, getSession, closeSession, closeAllSessions, touchSession, closeExpiredSessions } from '../analyze/session'
 import { listObjects, getSchema, previewTable } from '../analyze/analyze-core'
 import { checkSql } from '../security/sql-precheck'
+import { getRuntimeInfo, initRuntime, uninstallRuntime } from '../python/runtime'
+import {
+  createSession as createPythonSession,
+  getSession as getPythonSession,
+  closeSession as closePythonSession,
+  ensureWorker,
+  copyImportFile,
+  updateImportedFile,
+  syncRegisteredFiles
+} from '../python/session'
+import { resolveExecScript } from '../python/python-worker'
+import { atomicWriteFile } from '../core/atomic-write'
+import type { PythonRegisterImportItem, PythonRunResult, PythonSessionInfo } from '../../shared/ipc-types'
 
 // 实例 ID：本次启动生成的随机唯一标识，只存内存，下次启动换新。
 const instanceId = randomUUID()
@@ -278,6 +291,226 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       logger.error('uninstall failed', err)
       return fail('UNINSTALL_FAILED', `卸载失败：${String(err)}`)
     }
+  })
+
+  // ---------- Python 分析：运行时管理 ----------
+
+  ipcMain.handle(IPC_CHANNELS.pythonGetRuntimeInfo, () => ok(getRuntimeInfo()))
+
+  ipcMain.handle(IPC_CHANNELS.pythonInitRuntime, () => {
+    try {
+      return ok(initRuntime())
+    } catch (err) {
+      logger.error('python runtime init failed', err)
+      return fail('PYTHON_INIT_FAILED', `运行时初始化失败：${String(err)}`)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.pythonUninstallRuntime, () => {
+    try {
+      uninstallRuntime()
+      return ok(null)
+    } catch (err) {
+      logger.error('python runtime uninstall failed', err)
+      return fail('PYTHON_UNINSTALL_FAILED', `运行时卸载失败：${String(err)}`)
+    }
+  })
+
+  // ---------- Python 分析：会话与执行 ----------
+
+  /** 运行时会话执行器脚本与解释器路径（激活运行时或开发回退） */
+  function pythonLaunch(): { pythonPath: string; execScript: string } | null {
+    const info = getRuntimeInfo()
+    if (info.status !== 'ready') return null
+    return { pythonPath: info.pythonPath, execScript: resolveExecScript(path.dirname(info.pythonPath)) }
+  }
+
+  /** 流式输出转发：Worker 行输出 → 所有窗口 event:python-stream */
+  function attachStream(sessionId: string): void {
+    const session = getPythonSession(sessionId)
+    if (!session?.worker) return
+    session.worker.onStream = (e) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send(IPC_CHANNELS.eventPythonStream, { sessionId, ...e })
+      }
+    }
+  }
+
+  ipcMain.handle(IPC_CHANNELS.pythonCreateSession, () => {
+    const launch = pythonLaunch()
+    if (!launch) return fail('PYTHON_RUNTIME_MISSING', 'Python 运行时未就绪，请先在系统设置中初始化')
+    const session = createPythonSession(deps.temp.instanceRoot)
+    const info: PythonSessionInfo = { sessionId: session.sessionId }
+    return ok(info)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.pythonResetSession, (_e, payload?: { sessionId?: string }) => {
+    const sessionId = payload?.sessionId
+    if (sessionId) closePythonSession(sessionId)
+    const launch = pythonLaunch()
+    if (!launch) return fail('PYTHON_RUNTIME_MISSING', 'Python 运行时未就绪，请先在系统设置中初始化')
+    const session = createPythonSession(deps.temp.instanceRoot)
+    return ok({ sessionId: session.sessionId } satisfies PythonSessionInfo)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.pythonRegisterImport, (_e, payload?: { sessionId?: string; items?: PythonRegisterImportItem[] }) => {
+    const session = getPythonSession(payload?.sessionId ?? '')
+    if (!session) return fail('PYTHON_SESSION_NOT_FOUND', 'Python 会话不存在，请重置会话后重试')
+    const items = payload?.items ?? []
+    const infos = []
+    for (const item of items) {
+      if (!deps.whitelist.isAuthorizedDir(path.dirname(item.sourcePath))) {
+        return fail('PATH_NOT_AUTHORIZED', `文件未授权：${path.basename(item.sourcePath)}`)
+      }
+      if (!fs.existsSync(item.sourcePath)) {
+        return fail('FILE_NOT_FOUND', `文件不存在：${path.basename(item.sourcePath)}`)
+      }
+      const f = copyImportFile(session, item.sourcePath, item.originalName, item.kind)
+      f.headerRow = item.headerRow
+      infos.push(f)
+    }
+    // Worker 存活时同步注册（预读 DataFrame）；未启动则下次执行时自动补载
+    if (session.worker?.isAlive()) syncRegisteredFiles(session)
+    return ok(infos)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.pythonUpdateImported, (_e, payload?: { sessionId?: string; fileId?: string; patch?: Partial<{ headerRow: number | null; rowCount: number | null; varName: string }> }) => {
+    const session = getPythonSession(payload?.sessionId ?? '')
+    if (!session) return fail('PYTHON_SESSION_NOT_FOUND', 'Python 会话不存在')
+    if (payload?.fileId) updateImportedFile(session, payload.fileId, payload.patch ?? {})
+    return ok(null)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.pythonRunCode, (_e, payload?: { sessionId?: string; code?: string }) => {
+    const session = getPythonSession(payload?.sessionId ?? '')
+    if (!session) return fail('PYTHON_SESSION_NOT_FOUND', 'Python 会话不存在，请重置会话后重试')
+    const launch = pythonLaunch()
+    if (!launch) return fail('PYTHON_RUNTIME_MISSING', 'Python 运行时未就绪，请先在系统设置中初始化')
+    const worker = ensureWorker(session, launch.pythonPath, launch.execScript)
+    attachStream(session.sessionId)
+    syncRegisteredFiles(session)
+    const code = payload?.code ?? ''
+    if (!code.trim()) {
+      const empty: PythonRunResult = { ok: false, status: 'error', elapsedMs: 0, message: '代码为空', blocks: [] }
+      return ok(empty)
+    }
+    return new Promise<PythonRunResult>((resolve) => {
+      void worker.run(code).then((r) => {
+        // 结果快照：导出结果时主进程据此写文件（表格由 Worker 直写临时文件后搬运）
+        session.lastBlocks = r.blocks ?? []
+        session.lastText = (r.blocks ?? [])
+          .filter((b) => b.kind === 'text')
+          .map((b) => b.text ?? '')
+          .join('\n')
+        resolve(r)
+      })
+    })
+  })
+
+  /** Python 导出结果：按类型分三类处理——表格（Worker 直写会话目录临时文件后原子搬运）、
+   *  图表（base64 解码写文件）、文本（拼接写 TXT/MD）；目标路径由用户保存对话框给出。 */
+  ipcMain.handle(
+    IPC_CHANNELS.pythonExportResult,
+    async (_e, payload?: { sessionId?: string; kind?: string; outputPath?: string }) => {
+      const session = getPythonSession(payload?.sessionId ?? '')
+      if (!session) return fail('PYTHON_SESSION_NOT_FOUND', 'Python 会话不存在')
+      const kind = payload?.kind ?? ''
+      const outputPath = payload?.outputPath ?? ''
+      if (!outputPath) return fail('INVALID_OUTPUT_PATH', '导出路径为空')
+      const targetDir = path.dirname(outputPath)
+      if (!deps.whitelist.isAuthorizedDir(targetDir)) {
+        return fail('PATH_NOT_AUTHORIZED', '导出目录未授权')
+      }
+
+      // 表格类：Worker 直写会话目录临时文件 → 主进程读取 → 原子写目标
+      const tableKinds = ['csv', 'excel', 'json', 'sqlite']
+      if (tableKinds.includes(kind)) {
+        const launch = pythonLaunch()
+        if (!launch) return fail('PYTHON_RUNTIME_MISSING', 'Python 运行时未就绪')
+        const worker = ensureWorker(session, launch.pythonPath, launch.execScript)
+        const tmpTarget = path.join(session.dir, `__export_tmp.${kind === 'sqlite' ? 'db' : kind}`)
+        const res = await worker.exportTable(kind as 'csv' | 'excel' | 'json' | 'sqlite', tmpTarget)
+        if (!res.ok) return fail('PYTHON_EXPORT_FAILED', res.message)
+        const buf = fs.readFileSync(tmpTarget)
+        const writeResult = atomicWriteFile(outputPath, (tmp) => fs.writeFileSync(tmp, buf))
+        try {
+          fs.rmSync(tmpTarget, { force: true })
+        } catch {
+          /* 临时文件由会话清理兜底 */
+        }
+        if (!writeResult.ok) return fail('EXPORT_WRITE_FAILED', writeResult.error)
+        return ok({ path: outputPath })
+      }
+
+      // 图表类：取最近一次结果中的最后一张图，base64 解码后原子写
+      if (kind === 'png' || kind === 'svg') {
+        const imgs = (session.lastBlocks ?? []).filter((b) => b.kind === 'image')
+        const last = imgs[imgs.length - 1]
+        if (!last) return fail('NO_IMAGE_RESULT', '没有可导出的图表（请先运行代码生成图表）')
+        const buf = Buffer.from(last.data ?? '', 'base64')
+        const writeResult = atomicWriteFile(outputPath, (tmp) => fs.writeFileSync(tmp, buf))
+        if (!writeResult.ok) return fail('EXPORT_WRITE_FAILED', writeResult.error)
+        return ok({ path: outputPath })
+      }
+
+      // 文本类：拼接最近一次执行的文本输出写 TXT / Markdown
+      if (kind === 'txt' || kind === 'md') {
+        const text = session.lastText || ''
+        const writeResult = atomicWriteFile(outputPath, (tmp) => fs.writeFileSync(tmp, text, 'utf-8'))
+        if (!writeResult.ok) return fail('EXPORT_WRITE_FAILED', writeResult.error)
+        return ok({ path: outputPath })
+      }
+
+      return fail('UNSUPPORTED_EXPORT_KIND', `不支持的导出格式：${kind}`)
+    }
+  )
+
+  /** Python 结果保存对话框：按导出格式给过滤器与默认文件名，记住上次导出目录 */
+  ipcMain.handle(IPC_CHANNELS.pythonChooseExportFile, async (_e, payload?: { kind?: string }) => {
+    const kind = payload?.kind ?? 'csv'
+    const map: Record<string, { ext: string; name: string }> = {
+      csv: { ext: 'csv', name: 'CSV 文件' },
+      excel: { ext: 'xlsx', name: 'Excel 文件' },
+      json: { ext: 'json', name: 'JSON 文件' },
+      sqlite: { ext: 'db', name: 'SQLite 数据库' },
+      png: { ext: 'png', name: 'PNG 图片' },
+      svg: { ext: 'svg', name: 'SVG 图片' },
+      txt: { ext: 'txt', name: '文本文件' },
+      md: { ext: 'md', name: 'Markdown 文件' }
+    }
+    const cfg = map[kind] ?? map.csv
+    const win = BrowserWindow.getAllWindows()[0]
+    const result = await dialog.showSaveDialog(win, {
+      title: '导出 Python 结果',
+      defaultPath: path.join(
+        config.getPreferences().lastExportDirectory || app.getPath('documents'),
+        `python结果_${exportTimestamp()}.${cfg.ext}`
+      ),
+      filters: [{ name: cfg.name, extensions: [cfg.ext] }]
+    })
+    if (result.canceled || !result.filePath) return ok({ path: null })
+    // 记住本次导出目录，下次默认定位到同一文件夹。
+    config.setPreferences({ lastExportDirectory: path.dirname(result.filePath) })
+    deps.whitelist.authorize(path.dirname(result.filePath))
+    return ok({ path: result.filePath })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.pythonCancelRun, (_e, payload?: { sessionId?: string }) => {
+    const session = getPythonSession(payload?.sessionId ?? '')
+    if (!session?.worker) return ok(null)
+    session.worker.cancel()
+    return ok(null)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.pythonFormatCode, async (_e, payload?: { sessionId?: string; code?: string }) => {
+    const session = getPythonSession(payload?.sessionId ?? '')
+    if (!session) return fail('PYTHON_SESSION_NOT_FOUND', 'Python 会话不存在')
+    const launch = pythonLaunch()
+    if (!launch) return fail('PYTHON_RUNTIME_MISSING', 'Python 运行时未就绪，请先在系统设置中初始化')
+    const worker = ensureWorker(session, launch.pythonPath, launch.execScript)
+    attachStream(session.sessionId)
+    const res = await worker.format(payload?.code ?? '')
+    return ok(res)
   })
 
   // ---------- 任务（单任务模型 + 快照/增量重连） ----------

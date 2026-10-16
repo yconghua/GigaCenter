@@ -8,6 +8,7 @@ const messages: Record<string, Record<string, string>> = {
     'nav.home': '首页',
     'nav.convert': '格式转换',
     'nav.analyze': '数据分析',
+    'nav.python': 'Python 分析',
     'nav.settings': '系统设置',
     // 首页
     'home.tagline': '本地数据格式转换与数据分析工具',
