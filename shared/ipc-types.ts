@@ -49,6 +49,8 @@ export const IPC_CHANNELS = {
   pythonExportResult: 'python:export-result',
   /** Python 结果保存对话框：按导出格式给过滤器与默认文件名 */
   pythonChooseExportFile: 'python:choose-export-file',
+  /** Python 页导入文件选择：数据源过滤器含 XLS（与数据分析页对话框独立） */
+  pythonChooseFiles: 'python:choose-files',
   /** 取消当前 Python 执行：强杀 Worker（会话变量重置） */
   pythonCancelRun: 'python:cancel-run',
   /** 注册导入文件：复制到会话目录并预读注册 DataFrame 变量 */

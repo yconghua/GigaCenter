@@ -11,6 +11,7 @@ import type {
 
 export const pythonApi = {
   getRuntimeInfo: () => window.gigacenter.invoke<PythonRuntimeInfo>('python:get-runtime-info'),
+  chooseFiles: () => window.gigacenter.invoke<{ filePaths: string[] }>('python:choose-files'),
   createSession: () => window.gigacenter.invoke<PythonSessionInfo>('python:create-session'),
   resetSession: (sessionId: string) =>
     window.gigacenter.invoke<PythonSessionInfo>('python:reset-session', { sessionId }),

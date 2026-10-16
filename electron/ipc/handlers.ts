@@ -466,8 +466,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   )
 
   /** Python 结果保存对话框：按导出格式给过滤器与默认文件名，记住上次导出目录 */
-  ipcMain.handle(IPC_CHANNELS.pythonChooseExportFile, async (_e, payload?: { kind?: string }) => {
-    const kind = payload?.kind ?? 'csv'
+  ipcMain.handle(IPC_CHANNELS.pythonChooseExportFile, async (_e, payload?: { kind?: string }) => {    const kind = payload?.kind ?? 'csv'
     const map: Record<string, { ext: string; name: string }> = {
       csv: { ext: 'csv', name: 'CSV 文件' },
       excel: { ext: 'xlsx', name: 'Excel 文件' },
@@ -493,6 +492,29 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     config.setPreferences({ lastExportDirectory: path.dirname(result.filePath) })
     deps.whitelist.authorize(path.dirname(result.filePath))
     return ok({ path: result.filePath })
+  })
+
+  /** Python 页导入文件选择：数据源过滤器含 XLS（与数据分析页对话框独立），记住上次打开目录 */
+  ipcMain.handle(IPC_CHANNELS.pythonChooseFiles, async () => {
+    const win = BrowserWindow.getAllWindows()[0]
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择数据文件（可多选）',
+      defaultPath: config.getPreferences().lastOpenDirectory || app.getPath('documents'),
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        {
+          name: '数据文件',
+          extensions: ['csv', 'txt', 'xlsx', 'xls', 'json', 'sqlite', 'db', 'sqlite3']
+        }
+      ]
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return ok<AnalyzeChooseFilesResult>({ filePaths: [] })
+    }
+    // 记住本次打开目录（多选取第一个文件所在目录）。
+    config.setPreferences({ lastOpenDirectory: path.dirname(result.filePaths[0]) })
+    for (const fp of result.filePaths) deps.whitelist.authorize(path.dirname(fp))
+    return ok<AnalyzeChooseFilesResult>({ filePaths: result.filePaths })
   })
 
   ipcMain.handle(IPC_CHANNELS.pythonCancelRun, (_e, payload?: { sessionId?: string }) => {

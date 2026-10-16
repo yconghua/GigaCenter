@@ -184,13 +184,13 @@ function statusText(status: string, message: string): string {
   return `${map[status] ?? status}${message ? `：${message}` : ''}`
 }
 
-/** 导入数据文件：复用数据分析页的文件选择对话框与结构探针，复制到会话目录并注册变量 */
+/** 导入数据文件：Python 专用选择器（含 XLS），探针展示字段，复制到会话目录并注册变量 */
 async function pickFiles(): Promise<void> {
   if (busy.value) {
     feedback.warning('已有任务运行中，请等待完成')
     return
   }
-  const res = await analyzeApi.chooseFiles()
+  const res = await pythonApi.chooseFiles()
   if (!res.ok) {
     feedback.errorToast(res.error.message)
     return

@@ -27,6 +27,7 @@ const allowedChannels = new Set<string>([
   'python:format-code',
   'python:export-result',
   'python:choose-export-file',
+  'python:choose-files',
   'python:cancel-run',
   'python:register-import',
   'python:update-imported',
