@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useTaskStore } from '@/store/task'
 import { applyFontScale, applyTheme } from '@/theme'
@@ -12,6 +12,15 @@ const route = useRoute()
 const task = useTaskStore()
 // 顶栏版本号实时读取主进程 app.getVersion()（读 package.json），不写死
 const appVersion = ref('')
+
+// 顶栏时钟：本地时间 YYYY-MM-DD HH:mm:ss，每秒刷新
+const now = ref('')
+let clockTimer: ReturnType<typeof setInterval> | undefined
+function formatNow(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
 
 // 启动时应用持久化主题与字号设置；跟随系统档时，后续系统主题切换由主进程 nativeTheme 事件推送。
 async function initTheme(): Promise<void> {
@@ -33,6 +42,14 @@ async function initTheme(): Promise<void> {
 onMounted(() => {
   void task.init()
   void initTheme()
+  now.value = formatNow()
+  clockTimer = setInterval(() => {
+    now.value = formatNow()
+  }, 1000)
+})
+
+onUnmounted(() => {
+  if (clockTimer) clearInterval(clockTimer)
 })
 </script>
 
@@ -43,7 +60,10 @@ onMounted(() => {
         <img src="@/assets/logo/logo.png" alt="logo" class="h-8 w-8 object-contain" />
         <span class="text-base font-semibold">{{ $t('app.title') }}</span>
       </div>
-      <div class="text-sm text-[var(--c-text-2)]">v{{ appVersion }}</div>
+      <div class="flex items-center gap-2 text-sm text-[var(--c-text-2)]">
+        <span>{{ now }}</span>
+        <span>v{{ appVersion }}</span>
+      </div>
     </header>
     <div class="flex min-h-0 flex-1">
       <nav class="w-44 shrink-0 border-r border-[var(--c-border-strong)] bg-[var(--c-surface)] p-2">
