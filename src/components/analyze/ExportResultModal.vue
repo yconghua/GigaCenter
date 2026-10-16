@@ -78,9 +78,9 @@ async function doExport(): Promise<void> {
 
     <div class="mb-3 max-h-56 overflow-auto rounded border border-[var(--c-border-strong)]">
       <table class="w-full text-xs">
-        <thead class="sticky top-0 bg-[var(--c-surface-2)]">
+        <thead class="sticky top-0">
           <tr>
-            <th v-for="c in columns" :key="c" class="border-b border-[var(--c-border-strong)] px-2 py-1 text-left text-[var(--c-text-2)]">
+            <th v-for="c in columns" :key="c" class="border-b border-[var(--c-border-strong)] bg-[var(--c-surface-2)] px-2 py-1 text-left text-[var(--c-text-2)]">
               {{ c }}
             </th>
           </tr>

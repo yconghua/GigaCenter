@@ -122,7 +122,8 @@ function sortIndicator(ci: number): string {
     <!-- 数据滚动区：全量数据，横向+竖向滚动；表头 sticky 在顶部，横向随数据滚动 -->
     <div class="flex min-h-0 flex-1">
       <div ref="containerRef" class="min-w-0 flex-1 overflow-auto">
-        <div class="sticky top-0 z-10 flex border-b border-[var(--c-border-strong)] bg-[var(--c-surface-2)]">
+        <!-- 表头容器 w-max：背景覆盖全部列宽，横向滚动后任何位置的标头都保持灰色 -->
+        <div class="sticky top-0 z-10 flex w-max border-b border-[var(--c-border-strong)] bg-[var(--c-surface-2)]">
           <div
             v-for="(col, ci) in columns"
             v-show="!hiddenCols.has(ci)"
