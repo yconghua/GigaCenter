@@ -267,6 +267,8 @@ export interface PythonHistoryItem {
   at: number
   elapsedMs: number
   status: 'ok' | 'blocked' | 'error' | 'timeout' | 'oom' | 'crashed' | 'cancelled'
+  /** 失败时的错误详情（traceback / 拦截原因 / 超时说明等），成功时为 undefined */
+  message?: string
 }
 
 // ---------- 任务状态机与事件 ----------

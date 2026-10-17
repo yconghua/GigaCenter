@@ -123,6 +123,13 @@ function loadHistory(h: PythonHistoryItem): void {
   code.value = h.code
 }
 
+/** 历史项错误详情的展开状态 */
+const expandedHist = ref<Record<string, boolean>>({})
+
+function toggleHistDetail(h: PythonHistoryItem): void {
+  expandedHist.value[h.id] = !expandedHist.value[h.id]
+}
+
 async function copyHistory(h: PythonHistoryItem): Promise<void> {
   try {
     await navigator.clipboard.writeText(h.code)
@@ -460,10 +467,23 @@ onBeforeUnmount(() => {
                   <span class="rounded px-1.5 py-0.5 text-[10px]" :class="historyBadge(h.status).cls">{{ historyBadge(h.status).label }}</span>
                   <span class="text-[10px] text-[var(--c-text-3)]">{{ new Date(h.at).toLocaleTimeString() }} · {{ h.elapsedMs }}ms</span>
                   <span class="ml-auto flex shrink-0 gap-2" @click.stop>
+                    <button
+                      v-if="h.message"
+                      class="text-[10px] text-[var(--c-warn)] hover:underline"
+                      @click="toggleHistDetail(h)"
+                    >
+                      {{ expandedHist[h.id] ? '收起详情' : '查看详情' }}
+                    </button>
                     <button class="text-[10px] text-[var(--c-primary)] hover:underline" @click="copyHistory(h)">复制</button>
                   </span>
                 </div>
                 <div class="mt-0.5 truncate font-mono text-xs text-[var(--c-text-2)]">{{ h.code.replace(/\n/g, ' ⏎ ') }}</div>
+                <div
+                  v-if="expandedHist[h.id] && h.message"
+                  class="mt-1 whitespace-pre-wrap break-words rounded border border-[var(--c-border)] bg-[var(--c-bg)] p-1.5 font-mono text-[10px] text-[var(--c-danger)]"
+                >
+                  {{ h.message }}
+                </div>
               </div>
             </template>
           </div>

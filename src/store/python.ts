@@ -84,12 +84,19 @@ export const usePythonStore = defineStore('python', () => {
     if (res.ok) {
       const result = res.value
       blocks.value = result.blocks ?? []
+      // 失败时历史保存完整错误详情：优先取本次 err 流（traceback），无则退回结果 message
+      const errText = streams.value
+        .filter((s) => s.kind === 'err')
+        .map((s) => s.text)
+        .join('\n')
+        .trim()
       history.value.unshift({
         id: crypto.randomUUID(),
         code,
         at: Date.now(),
         elapsedMs: result.elapsedMs,
-        status: result.status
+        status: result.status,
+        message: result.status !== 'ok' ? (errText || result.message || undefined) : undefined
       })
       return result
     }
@@ -99,7 +106,8 @@ export const usePythonStore = defineStore('python', () => {
       code,
       at: Date.now(),
       elapsedMs: 0,
-      status: 'error'
+      status: 'error',
+      message: res.error.message
     })
     streams.value.push({ kind: 'err', text: res.error.message })
     return null
