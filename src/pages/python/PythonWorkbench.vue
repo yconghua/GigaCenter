@@ -247,6 +247,16 @@ async function pickFiles(): Promise<void> {
   }
 }
 
+/** 复制完整文件名（含后缀）到剪贴板 */
+async function copyFileName(f: PythonImportedFileInfo): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(f.originalName)
+    feedback.success(`已复制文件名：${f.originalName}`)
+  } catch {
+    feedback.errorToast('复制失败')
+  }
+}
+
 /** 删除单个导入文件：确认后删副本与变量（源文件不受影响） */
 async function onRemoveFile(f: PythonImportedFileInfo): Promise<void> {
   if (busy.value) {
@@ -369,6 +379,13 @@ onBeforeUnmount(() => {
               <span v-else class="w-4 shrink-0"></span>
               <span class="truncate text-[var(--c-text)]">{{ f.originalName }}</span>
               <span class="ml-auto shrink-0 text-[10px] text-[var(--c-text-3)]">{{ f.kind.toUpperCase() }}</span>
+              <button
+                class="shrink-0 rounded px-1 text-xs text-[var(--c-text-3)] hover:bg-[var(--c-surface-2)] hover:text-[var(--c-accent)]"
+                title="复制文件名（含后缀）"
+                @click="copyFileName(f)"
+              >
+                ⧉
+              </button>
               <button
                 class="shrink-0 rounded px-1 text-xs text-[var(--c-text-3)] hover:bg-[var(--c-danger-soft)] hover:text-[var(--c-danger)] disabled:opacity-40"
                 title="删除此文件"

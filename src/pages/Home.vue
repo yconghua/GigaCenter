@@ -33,17 +33,9 @@ onMounted(async () => {
     <section class="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5">
       <h2 class="mb-3 text-base font-semibold">{{ $t('home.intro.title') }}</h2>
       <ul class="space-y-2 text-sm">
-        <li class="flex items-start gap-2">
+        <li v-for="n in 4" :key="n" class="flex items-start gap-2">
           <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--c-primary)]"></span>
-          <span>{{ $t('home.intro.1') }}</span>
-        </li>
-        <li class="flex items-start gap-2">
-          <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--c-primary)]"></span>
-          <span>{{ $t('home.intro.2') }}</span>
-        </li>
-        <li class="flex items-start gap-2">
-          <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--c-primary)]"></span>
-          <span>{{ $t('home.intro.3') }}</span>
+          <span>{{ $t(`home.intro.${n}`) }}</span>
         </li>
       </ul>
     </section>
@@ -51,7 +43,7 @@ onMounted(async () => {
     <!-- 核心功能 -->
     <section class="mt-4">
       <h2 class="mb-3 text-base font-semibold">{{ $t('home.features.title') }}</h2>
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-3 gap-4">
         <router-link
           to="/convert"
           class="block rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5 transition-colors hover:border-[var(--c-primary)]"
@@ -66,13 +58,20 @@ onMounted(async () => {
           <h3 class="font-semibold text-[var(--c-primary)]">{{ $t('home.features.analyze') }}</h3>
           <p class="mt-2 text-sm text-[var(--c-text-2)]">{{ $t('home.features.analyzeDesc') }}</p>
         </router-link>
+        <router-link
+          to="/python"
+          class="block rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5 transition-colors hover:border-[var(--c-primary)]"
+        >
+          <h3 class="font-semibold text-[var(--c-primary)]">{{ $t('home.features.python') }}</h3>
+          <p class="mt-2 text-sm text-[var(--c-text-2)]">{{ $t('home.features.pythonDesc') }}</p>
+        </router-link>
       </div>
     </section>
 
     <!-- 使用流程 -->
     <section class="mt-4">
       <h2 class="mb-3 text-base font-semibold">{{ $t('home.flow.title') }}</h2>
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-3 gap-4">
         <div class="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5">
           <h3 class="mb-3 font-semibold">{{ $t('home.flow.convert') }}</h3>
           <ol class="space-y-2 text-sm">
@@ -96,6 +95,19 @@ onMounted(async () => {
                 {{ n }}
               </span>
               <span>{{ $t(`home.flow.analyze.${n}`) }}</span>
+            </li>
+          </ol>
+        </div>
+        <div class="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5">
+          <h3 class="mb-3 font-semibold">{{ $t('home.flow.python') }}</h3>
+          <ol class="space-y-2 text-sm">
+            <li v-for="n in 4" :key="n" class="flex items-start gap-3">
+              <span
+                class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--c-primary-soft)] text-xs text-[var(--c-primary)]"
+              >
+                {{ n }}
+              </span>
+              <span>{{ $t(`home.flow.python.${n}`) }}</span>
             </li>
           </ol>
         </div>
