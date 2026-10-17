@@ -5,7 +5,7 @@ import { useFeedbackStore } from '@/store/feedback'
 import { pythonApi } from '@/api/python'
 import { analyzeApi } from '@/api/analyze'
 import PythonEditor from '@/components/python/PythonEditor.vue'
-import type { PythonHistoryItem, ProbeTableInfo, PythonRuntimeInfo } from '@shared/ipc-types'
+import type { PythonHistoryItem, PythonImportedFileInfo, ProbeTableInfo, PythonRuntimeInfo } from '@shared/ipc-types'
 
 // Python 分析工作台：导入数据文件（副本入会话目录，不转 SQLite），编写 Python 代码
 // 由独立 Worker 执行（JSON over stdio）。布局：顶部两行固定（运行时状态栏 + 按钮行），
@@ -206,16 +206,24 @@ async function pickFiles(): Promise<void> {
   }
   const paths = res.value.filePaths
   if (paths.length === 0) return
+  // 同名拒绝（不区分大小写）：同一会话内已导入的文件不允许再次导入，提示并跳过
+  const existing = new Set(py.files.map((f) => f.originalName.toLowerCase()))
+  const dupes = paths.filter((p) => existing.has((p.split(/[\\/]/).pop() ?? p).toLowerCase()))
+  if (dupes.length > 0) {
+    feedback.errorToast(`已导入同名文件：${dupes.map((p) => p.split(/[\\/]/).pop()).join('、')}，请先删除再导入`)
+  }
+  const newPaths = paths.filter((p) => !existing.has((p.split(/[\\/]/).pop() ?? p).toLowerCase()))
+  if (newPaths.length === 0) return
   importing.value = true
   try {
     // 结构探测：复用 analyze:probe-import，获取表/字段/行数（仅展示，导入仍复制原文件）
-    const probeRes = await analyzeApi.probeImport(paths)
+    const probeRes = await analyzeApi.probeImport(newPaths)
     if (probeRes.ok) {
       for (const f of probeRes.value.files) {
         metaByPath.value[f.filePath] = f.tables
       }
     }
-    const items = paths.map((p) => {
+    const items = newPaths.map((p) => {
       const ext = p.split('.').pop()?.toLowerCase() ?? ''
       const kind = (['csv', 'txt', 'xlsx', 'xls', 'json', 'sqlite', 'db', 'sqlite3'] as const).includes(ext as never)
         ? (ext === 'db' || ext === 'sqlite3' ? 'sqlite' : (ext as 'csv' | 'txt' | 'xlsx' | 'xls' | 'json' | 'sqlite'))
@@ -237,6 +245,21 @@ async function pickFiles(): Promise<void> {
   } finally {
     importing.value = false
   }
+}
+
+/** 删除单个导入文件：确认后删副本与变量（源文件不受影响） */
+async function onRemoveFile(f: PythonImportedFileInfo): Promise<void> {
+  if (busy.value) {
+    feedback.warning('已有任务运行中，请等待完成')
+    return
+  }
+  const ok = await feedback.confirm({
+    title: '删除文件',
+    message: `将删除「${f.originalName}」的会话副本与同名变量（不影响源文件）。确认继续？`
+  })
+  if (!ok) return
+  if (await py.removeFile(f.id)) feedback.success(`已删除 ${f.originalName}`)
+  else feedback.errorToast('删除失败，请重试')
 }
 
 async function onReset(): Promise<void> {
@@ -346,6 +369,14 @@ onBeforeUnmount(() => {
               <span v-else class="w-4 shrink-0"></span>
               <span class="truncate text-[var(--c-text)]">{{ f.originalName }}</span>
               <span class="ml-auto shrink-0 text-[10px] text-[var(--c-text-3)]">{{ f.kind.toUpperCase() }}</span>
+              <button
+                class="shrink-0 rounded px-1 text-xs text-[var(--c-text-3)] hover:bg-[var(--c-danger-soft)] hover:text-[var(--c-danger)] disabled:opacity-40"
+                title="删除此文件"
+                :disabled="busy"
+                @click="onRemoveFile(f)"
+              >
+                ✕
+              </button>
             </div>
             <div class="mt-0.5 pl-5 font-mono text-[10px] text-[var(--c-accent)]">
               {{ f.varName }}<span v-if="f.rowCount !== null" class="text-[var(--c-text-3)]"> · {{ f.rowCount }} 行</span>

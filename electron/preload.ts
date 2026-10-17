@@ -31,6 +31,7 @@ const allowedChannels = new Set<string>([
   'python:cancel-run',
   'python:register-import',
   'python:update-imported',
+  'python:remove-import',
   'event:python-stream',
   'task:get-current',
   'task:get-active',

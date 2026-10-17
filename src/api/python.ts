@@ -30,7 +30,9 @@ export const pythonApi = {
     sessionId: string,
     fileId: string,
     patch: Partial<Pick<PythonImportedFileInfo, 'headerRow' | 'rowCount' | 'varName'>>
-  ) => window.gigacenter.invoke<null>('python:update-imported', { sessionId, fileId, patch })
+  ) => window.gigacenter.invoke<null>('python:update-imported', { sessionId, fileId, patch }),
+  removeImport: (sessionId: string, fileId: string) =>
+    window.gigacenter.invoke<null>('python:remove-import', { sessionId, fileId })
 }
 
 export type { PythonHistoryItem, PythonImportedFileInfo, PythonRuntimeInfo, PythonRunResult }

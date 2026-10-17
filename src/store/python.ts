@@ -68,6 +68,18 @@ export const usePythonStore = defineStore('python', () => {
     return []
   }
 
+  /** 删除单个导入文件：主进程删记录+副本+注销变量，前端同步列表与元数据 */
+  async function removeFile(fileId: string): Promise<boolean> {
+    if (!sessionId.value) return false
+    const res = await pythonApi.removeImport(sessionId.value, fileId)
+    if (!res.ok) return false
+    files.value = files.value.filter((f) => f.id !== fileId)
+    const next = { ...fileMetas.value }
+    delete next[fileId]
+    fileMetas.value = next
+    return true
+  }
+
   /** 设置文件结构探测结果（左侧列表展开显示字段） */
   function setFileMetas(metas: Record<string, ProbeTableInfo[]>): void {
     fileMetas.value = { ...fileMetas.value, ...metas }
@@ -143,6 +155,7 @@ export const usePythonStore = defineStore('python', () => {
     init,
     reset,
     registerImport,
+    removeFile,
     setFileMetas,
     run,
     cancel,

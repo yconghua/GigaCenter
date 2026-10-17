@@ -51,6 +51,7 @@ import {
   ensureWorker,
   copyImportFile,
   updateImportedFile,
+  removeImportedFile,
   syncRegisteredFiles
 } from '../python/session'
 import { resolveExecScript } from '../python/python-worker'
@@ -358,7 +359,13 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     if (!session) return fail('PYTHON_SESSION_NOT_FOUND', 'Python 会话不存在，请重置会话后重试')
     const items = payload?.items ?? []
     const infos = []
+    // 同名拒绝（不区分大小写，Windows 文件名不敏感）：同一会话内不允许导入重名文件
+    const existing = new Set(session.files.map((f) => path.basename(f.originalName).toLowerCase()))
     for (const item of items) {
+      const base = path.basename(item.originalName)
+      if (existing.has(base.toLowerCase())) {
+        return fail('PYTHON_DUPLICATE_FILE', `文件 ${base} 已导入，请先删除再导入`)
+      }
       if (!deps.whitelist.isAuthorizedDir(path.dirname(item.sourcePath))) {
         return fail('PATH_NOT_AUTHORIZED', `文件未授权：${path.basename(item.sourcePath)}`)
       }
@@ -367,11 +374,20 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       }
       const f = copyImportFile(session, item.sourcePath, item.originalName, item.kind)
       f.headerRow = item.headerRow
+      existing.add(base.toLowerCase())
       infos.push(f)
     }
     // Worker 存活时同步注册（预读 DataFrame）；未启动则下次执行时自动补载
     if (session.worker?.isAlive()) syncRegisteredFiles(session)
     return ok(infos)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.pythonRemoveImport, (_e, payload?: { sessionId?: string; fileId?: string }) => {
+    const session = getPythonSession(payload?.sessionId ?? '')
+    if (!session) return fail('PYTHON_SESSION_NOT_FOUND', 'Python 会话不存在')
+    const r = removeImportedFile(session, payload?.fileId ?? '')
+    if (!r.ok) return fail('PYTHON_FILE_NOT_FOUND', r.message)
+    return ok(null)
   })
 
   ipcMain.handle(IPC_CHANNELS.pythonUpdateImported, (_e, payload?: { sessionId?: string; fileId?: string; patch?: Partial<{ headerRow: number | null; rowCount: number | null; varName: string }> }) => {

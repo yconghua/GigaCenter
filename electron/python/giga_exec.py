@@ -190,6 +190,16 @@ def _handle_register(req):
         _emit({"t": "ack", "op": "register", "name": name, "ready": False, "message": str(e)})
 
 
+def _handle_unregister(req):
+    """删除单个导入文件：注销注册表条目与会话变量（删除文件时调用，幂等）。"""
+    name = req.get("name")
+    if not name:
+        return
+    _REGISTERED.pop(name, None)
+    _GIGA_GLOBALS.pop(name, None)
+    _emit({"t": "ack", "op": "unregister", "name": name})
+
+
 def _handle_run(req):
     code = req.get("code", "")
     t0 = time.time()
@@ -293,6 +303,8 @@ def main():
             _emit({"t": "pong"})
         elif op == "register":
             _handle_register(req)
+        elif op == "unregister":
+            _handle_unregister(req)
         elif op == "run":
             _handle_run(req)
         elif op == "format":

@@ -298,6 +298,12 @@ export class PythonWorker {
     this.child?.stdin?.write(JSON.stringify({ op: 'register', ...item, headerRow: item.headerRow ?? 0 }) + '\n')
   }
 
+  /** 注销单个导入文件变量：删除子进程注册表条目与全局变量（删除文件时调用） */
+  unregister(name: string): void {
+    if (!this.isAlive()) return
+    this.child?.stdin?.write(JSON.stringify({ op: 'unregister', name }) + '\n')
+  }
+
   /** autopep8 格式化代码：Worker 内执行，不触达运行状态与变量 */
   format(code: string): Promise<{ ok: boolean; code: string; message: string }> {
     this.ensureStarted()

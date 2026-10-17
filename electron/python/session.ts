@@ -118,6 +118,21 @@ export function updateImportedFile(session: PythonSession, fileId: string, patch
   if (f) Object.assign(f, patch)
 }
 
+/** 删除单个导入文件：移除记录、删除会话目录副本、注销 Worker 变量（幂等） */
+export function removeImportedFile(session: PythonSession, fileId: string): { ok: boolean; message: string } {
+  const idx = session.files.findIndex((f) => f.id === fileId)
+  if (idx < 0) return { ok: false, message: '文件不存在' }
+  const [f] = session.files.splice(idx, 1)
+  try {
+    fs.rmSync(f.copyPath, { force: true })
+  } catch (err) {
+    logger.warn('python imported file remove failed', { fileId, error: String(err) })
+  }
+  // Worker 存活时注销对应 DataFrame 变量（unregister 指令在子进程内删注册表与全局变量）
+  session.worker?.unregister(f.varName)
+  return { ok: true, message: '' }
+}
+
 /** 向 Worker 注册全部导入文件（注册表驱动，重复注册幂等）；Worker 未启动时跳过（下次运行自动补载） */
 export function syncRegisteredFiles(session: PythonSession): void {
   if (!session.worker || !session.worker.isAlive()) return

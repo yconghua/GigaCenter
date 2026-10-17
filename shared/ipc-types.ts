@@ -57,6 +57,8 @@ export const IPC_CHANNELS = {
   pythonRegisterImport: 'python:register-import',
   /** 更新已导入文件信息（表头行/行数/变量名） */
   pythonUpdateImported: 'python:update-imported',
+  /** 删除单个导入文件：移除记录、删会话目录副本并注销 Worker 变量 */
+  pythonRemoveImport: 'python:remove-import',
   /** Python 执行流式输出事件（stdout/stderr 实时行） */
   eventPythonStream: 'event:python-stream',
   // 任务（事件缓冲与任务管理器阶段 1 落地，数据工作台阶段 2 接入）
