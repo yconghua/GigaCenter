@@ -83,7 +83,10 @@ export class PythonWorker {
       MPLCONFIGDIR: this.sessionDir,
       GIGACENTER_SESSION_DIR: this.sessionDir
     }
+    // 工作目录设为会话目录：用户代码中的相对路径（如 pd.read_csv("sales.csv")）
+    // 直接解析到会话目录内的导入副本，无需拼绝对路径
     this.child = spawn(this.pythonPath, [this.execScript], {
+      cwd: this.sessionDir,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true
