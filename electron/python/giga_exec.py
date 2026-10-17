@@ -216,8 +216,15 @@ def _handle_run(req):
                "status": "ok", "blocks": blocks})
     except BaseException:
         sys.stdout, sys.stderr = old_out, old_err
-        message = traceback.format_exc(limit=8)
-        _emit({"t": "error", "status": "error", "message": message[-2000:]})
+        # 先把用户已产生的输出（print 等）flush 回前端，避免异常时中间输出丢失
+        for proxy in (out_proxy, err_proxy):
+            if proxy.buf:
+                _emit({"t": "stream", "c": proxy.kind, "text": proxy.buf})
+                proxy.buf = ""
+        # 完整 traceback 作为 err 流发出（输出区实时可见），error 帧只带简短标题
+        tb = traceback.format_exc(limit=12)
+        _emit({"t": "stream", "c": "err", "text": tb.rstrip()})
+        _emit({"t": "error", "status": "error", "message": "执行出错（详见下方输出区）"})
     finally:
         sys.stdout, sys.stderr = old_out, old_err
 

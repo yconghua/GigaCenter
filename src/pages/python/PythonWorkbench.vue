@@ -80,7 +80,9 @@ async function runCode(value: string): Promise<void> {
   if (busy.value) return
   const res = await py.run(value)
   if (res && !res.ok && res.status !== 'ok') {
-    feedback.errorToast(statusText(res.status, res.message))
+    // 代码执行错误：完整 traceback 已在下方输出区，Toast 只提示位置
+    if (res.status === 'error') feedback.errorToast('执行出错（详见下方输出区）')
+    else feedback.errorToast(statusText(res.status, res.message))
   }
 }
 
@@ -426,7 +428,7 @@ onBeforeUnmount(() => {
               <div v-if="!py.running && py.streams.length === 0 && py.blocks.length === 0" class="text-xs text-[var(--c-text-2)]">
                 运行代码后在此显示输出（文本 / 表格 / 图表）
               </div>
-              <div v-for="(s, i) in py.streams" :key="`s${i}`" class="font-mono text-xs" :class="s.kind === 'err' ? 'text-[var(--c-danger)]' : 'text-[var(--c-text)]'">
+              <div v-for="(s, i) in py.streams" :key="`s${i}`" class="whitespace-pre-wrap break-words font-mono text-xs" :class="s.kind === 'err' ? 'text-[var(--c-danger)]' : 'text-[var(--c-text)]'">
                 {{ s.text }}
               </div>
               <div v-for="(b, i) in py.blocks" :key="`b${i}`" class="mt-2">
