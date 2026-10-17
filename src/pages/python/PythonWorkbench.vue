@@ -185,7 +185,7 @@ function statusText(status: string, message: string): string {
   const map: Record<string, string> = {
     blocked: '安全拦截',
     error: '执行出错',
-    timeout: '执行超时（30 秒）',
+    timeout: '执行超时（已自动终止）',
     oom: '超出内存上限',
     crashed: '执行环境已重启',
     cancelled: '已取消'

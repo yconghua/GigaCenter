@@ -27,7 +27,8 @@ const DEFAULTS: AppPreferences = {
   lastExportDirectory: '',
   allowModifyTempDb: false,
   longPathSupport: false,
-  notificationsEnabled: true
+  notificationsEnabled: true,
+  pythonTimeoutMs: 60
 }
 
 export class ConfigStore {

@@ -411,7 +411,10 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       return ok(empty)
     }
     return new Promise<PythonRunResult>((resolve) => {
-      void worker.run(code).then((r) => {
+      // 单次执行上限读用户偏好（10~600 秒，默认 60），超时自动终止
+      const prefs = config.getPreferences()
+      const timeoutMs = Math.min(600, Math.max(10, Number(prefs.pythonTimeoutMs) || 60)) * 1000
+      void worker.run(code, timeoutMs).then((r) => {
         // 结果快照：导出结果时主进程据此写文件（表格由 Worker 直写临时文件后搬运）
         session.lastBlocks = r.blocks ?? []
         session.lastText = (r.blocks ?? [])

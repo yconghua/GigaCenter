@@ -200,6 +200,8 @@ export interface AppPreferences {
   longPathSupport: boolean
   /** 系统通知开关：仅长任务完成/失败，默认开 */
   notificationsEnabled: boolean
+  /** Python 单次执行上限（秒），默认 60；超时自动终止执行 */
+  pythonTimeoutMs: number
 }
 
 /** 路径信息（系统设置页展示） */

@@ -48,7 +48,7 @@ interface PendingExport {
   resolve: (r: { ok: boolean; path: string; message: string }) => void
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000
+const DEFAULT_TIMEOUT_MS = 60_000
 const MEM_LIMIT_MB = 1024
 const MEM_CHECK_INTERVAL_MS = 5000
 

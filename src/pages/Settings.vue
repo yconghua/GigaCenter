@@ -11,6 +11,15 @@ const paths = ref<PathInfo | null>(null)
 const pythonRuntime = ref<PythonRuntimeInfo | null>(null)
 const pythonBusy = ref(false)
 
+// 设置分区：公共 / 格式转换 / SQL 分析 / Python 分析
+const activeTab = ref<'common' | 'convert' | 'analyze' | 'python'>('common')
+const tabs: { key: typeof activeTab.value; label: string }[] = [
+  { key: 'common', label: '公共设置' },
+  { key: 'convert', label: '格式转换' },
+  { key: 'analyze', label: 'SQL 分析' },
+  { key: 'python', label: 'Python 分析' }
+]
+
 const themeOptions: { value: AppPreferences['theme']; label: string; hint: string }[] = [
   { value: 'system', label: '跟随系统', hint: '随操作系统亮暗自动切换' },
   { value: 'light', label: '亮色', hint: '始终使用浅色外观' },
@@ -24,14 +33,17 @@ async function onFontSizeChange(e: Event): Promise<void> {
   await setPref({ fontSize: v })
 }
 
-const shortcutLabels: Record<string, string> = {
-  runQuery: '执行查询',
-  runSelected: '执行选中 SQL',
-  formatSql: '格式化 SQL',
-  exportResult: '导出当前结果',
+// 快捷键分组：SQL 编辑器专属项在 SQL 分析分区，其余为全局项
+const commonShortcutLabels: Record<string, string> = {
   openFile: '打开文件',
   openSettings: '打开系统设置',
   cancel: '取消弹窗 / 取消任务'
+}
+const sqlShortcutLabels: Record<string, string> = {
+  runQuery: '执行查询',
+  runSelected: '执行选中 SQL',
+  formatSql: '格式化 SQL',
+  exportResult: '导出当前结果'
 }
 
 onMounted(async () => {
@@ -78,6 +90,12 @@ async function onUninstallPythonRuntime(): Promise<void> {
   }
 }
 
+/** Python 单次执行上限（秒）：滑条/数字输入即时生效，限制 10~600 */
+async function onPythonTimeoutChange(e: Event): Promise<void> {
+  const v = Math.min(600, Math.max(10, Math.round(Number((e.target as HTMLInputElement).value) || 60)))
+  await setPref({ pythonTimeoutMs: v })
+}
+
 async function copyText(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text)
@@ -111,6 +129,12 @@ async function onClearPreferences(): Promise<void> {
   } else {
     feedback.errorToast(res.error.message)
   }
+}
+
+/** 清除格式转换目录记忆：下次打开/导出回到默认位置 */
+async function onClearDirMemory(field: 'lastOpenDirectory' | 'lastExportDirectory'): Promise<void> {
+  await setPref({ [field]: '' })
+  feedback.success('目录记忆已清除')
 }
 
 async function onShortcutChange(key: string, value: string): Promise<void> {
@@ -169,254 +193,367 @@ function formatBytes(bytes: number): string {
   <div class="p-4">
     <div class="text-sm font-semibold">{{ $t('settings.title') }}</div>
 
-    <!-- 路径与实例信息 -->
-    <div v-if="paths" class="mt-4 space-y-2 text-sm">
-      <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
-        <span class="shrink-0 text-[var(--c-text-2)]">{{ $t('settings.configDir') }}</span>
-        <div class="flex min-w-0 items-center gap-2">
-          <span class="truncate text-[var(--c-text)]">{{ paths.configDir }}</span>
-          <button class="shrink-0 text-xs text-[var(--c-primary)] hover:underline" @click="openFolder(paths.configDir)">
-            {{ $t('settings.openDir') }}
-          </button>
-        </div>
-      </div>
-      <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
-        <span class="shrink-0 text-[var(--c-text-2)]">{{ $t('settings.logDir') }}</span>
-        <div class="flex min-w-0 items-center gap-2">
-          <span class="truncate text-[var(--c-text)]">{{ paths.logDir }}</span>
-          <button class="shrink-0 text-xs text-[var(--c-primary)] hover:underline" @click="openFolder(paths.logDir)">
-            {{ $t('settings.openDir') }}
-          </button>
-        </div>
-      </div>
-      <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
-        <span class="shrink-0 text-[var(--c-text-2)]">{{ $t('settings.tempRoot') }}</span>
-        <div class="flex min-w-0 items-center gap-2">
-          <span class="truncate text-[var(--c-text)]">{{ paths.tempRoot }}</span>
-          <button class="shrink-0 text-xs text-[var(--c-primary)] hover:underline" @click="openFolder(paths.tempRoot)">
-            {{ $t('settings.openDir') }}
-          </button>
-        </div>
-      </div>
-      <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
-        <span class="shrink-0 text-[var(--c-text-2)]">{{ $t('settings.sessionTempUsed') }}</span>
-        <span class="text-[var(--c-text)]">{{ formatBytes(paths.sessionTempUsedBytes) }}</span>
-      </div>
-      <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
-        <div>
-          <div class="text-[var(--c-text-2)]">{{ $t('settings.instanceId') }}</div>
-          <div class="text-xs text-[var(--c-text-3)]">{{ $t('settings.instanceIdHint') }}</div>
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="font-mono text-xs text-[var(--c-text)]">{{ paths.instanceId }}</span>
-          <button class="text-xs text-[var(--c-primary)] hover:underline" @click="copyText(paths.instanceId)">
-            {{ $t('settings.copy') }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 外观：主题（亮/暗/跟随系统）与界面字号 -->
-    <div v-if="prefs" class="mt-4 space-y-2 text-sm">
-      <div class="rounded bg-[var(--c-surface)] px-3 py-2">
-        <div class="mb-2">主题外观</div>
-        <div class="flex gap-2">
-          <button
-            v-for="opt in themeOptions"
-            :key="opt.value"
-            class="flex-1 rounded border px-2 py-1.5 text-xs"
-            :class="prefs.theme === opt.value
-              ? 'border-[var(--c-primary)] bg-[var(--c-primary-soft)] text-[var(--c-text)]'
-              : 'border-[var(--c-border-strong)] hover:bg-[var(--c-surface-2)]'"
-            @click="setPref({ theme: opt.value })"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
-        <div class="mt-1 text-xs text-[var(--c-text-3)]">
-          {{ themeOptions.find((o) => o.value === prefs?.theme)?.hint }}
-        </div>
-      </div>
-      <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
-        <div>
-          <div>界面字号</div>
-          <div class="text-xs text-[var(--c-text-3)]">全局文字与控件尺寸，即时生效</div>
-        </div>
-        <div class="flex items-center gap-3">
-          <input
-            type="range"
-            min="12"
-            max="18"
-            step="1"
-            class="w-36 accent-[var(--c-primary)]"
-            :value="prefs.fontSize"
-            @input="onFontSizeChange"
-          />
-          <span class="w-10 text-xs text-[var(--c-text-2)]">{{ prefs.fontSize }}px</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 行为设置 -->
-    <div v-if="prefs" class="mt-4 space-y-2 text-sm">
-      <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
-        <div>
-          <div>{{ $t('settings.allowModifyTempDb') }}</div>
-          <div class="text-xs text-[var(--c-text-3)]">{{ $t('settings.allowModifyTempDbHint') }}</div>
-        </div>
-        <input
-          type="checkbox"
-          class="h-4 w-4 accent-[var(--c-primary)]"
-          :checked="prefs.allowModifyTempDb"
-          @change="setPref({ allowModifyTempDb: ($event.target as HTMLInputElement).checked })"
-        />
-      </div>
-      <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
-        <div>
-          <div>启用长路径支持</div>
-          <div class="text-xs text-[var(--c-text-3)]">路径超 260 字符时使用 \\?\ 前缀（默认关，改动即时生效）</div>
-        </div>
-        <input
-          type="checkbox"
-          class="h-4 w-4 accent-[var(--c-primary)]"
-          :checked="prefs.longPathSupport"
-          @change="setPref({ longPathSupport: ($event.target as HTMLInputElement).checked })"
-        />
-      </div>
-      <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
-        <div>
-          <div>系统通知</div>
-          <div class="text-xs text-[var(--c-text-3)]">仅长任务完成/失败时通知，应用内提示不受影响</div>
-        </div>
-        <input
-          type="checkbox"
-          class="h-4 w-4 accent-[var(--c-primary)]"
-          :checked="prefs.notificationsEnabled"
-          @change="setPref({ notificationsEnabled: ($event.target as HTMLInputElement).checked })"
-        />
-      </div>
-
-      <!-- 快捷键配置 -->
-      <div class="mt-4">
-        <div class="mb-1 text-sm font-semibold">快捷键配置</div>
-        <div class="overflow-hidden rounded bg-[var(--c-surface)]">
-          <div v-for="(label, key) in shortcutLabels" :key="key" class="flex items-center justify-between border-b border-[var(--c-border)] px-3 py-1.5 last:border-b-0">
-            <span class="text-sm text-[var(--c-text)]">{{ label }}</span>
-            <input
-              class="w-44 rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-2 py-1 text-xs text-[var(--c-text)]"
-              :value="prefs.shortcuts[key] ?? ''"
-              placeholder="如 Ctrl+Enter"
-              @change="onShortcutChange(key, ($event.target as HTMLInputElement).value)"
-            />
-          </div>
-          <div class="px-3 py-1.5 text-xs text-[var(--c-text-3)]">
-            编辑后立即保存；CodeMirror 编辑器内 Ctrl+Enter 执行、Ctrl+Shift+Enter 执行选中、Ctrl+Shift+F 格式化已内置生效。
-          </div>
-        </div>
-      </div>
-
-      <!-- 诊断包 -->
-      <div class="mt-4 flex items-center gap-3">
-        <button
-          class="rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-3 py-1.5 text-sm text-[var(--c-text)] hover:bg-[var(--c-surface-2)]"
-          @click="onExportDiagnostics"
-        >
-          导出诊断包
-        </button>
-        <span class="text-xs text-[var(--c-text-3)]">脱敏信息：版本、系统、实例 ID、最近日志；不含原始数据与 SQL 全文</span>
-      </div>
-
-      <!-- 开发者工具 -->
-      <div class="mt-4 flex items-center gap-3">
-        <button
-          class="rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-3 py-1.5 text-sm text-[var(--c-text)] hover:bg-[var(--c-surface-2)]"
-          @click="onOpenDevTools"
-        >
-          打开控制台
-        </button>
-        <button
-          class="rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-3 py-1.5 text-sm text-[var(--c-text)] hover:bg-[var(--c-surface-2)]"
-          @click="onOpenExeFolder"
-        >
-          打开程序所在目录
-        </button>
-        <span class="text-xs text-[var(--c-text-3)]">控制台在独立窗口打开，诊断模式调试用</span>
-      </div>
-    </div>
-
-    <!-- 清除按钮（互不影响，各自独立生效） -->
-    <div class="mt-4 flex gap-2">
+    <!-- 分区 Tab -->
+    <div class="mt-2 flex gap-1 border-b border-[var(--c-border-strong)]">
       <button
-        class="rounded border border-[var(--c-danger-soft)] bg-[var(--c-danger-soft)] px-3 py-1.5 text-sm text-[var(--c-danger)] hover:bg-[var(--c-danger-soft)]"
-        @click="onClearPreferences"
+        v-for="tab in tabs"
+        :key="tab.key"
+        class="border-b-2 px-3 py-1.5 text-xs"
+        :class="activeTab === tab.key
+          ? 'border-[var(--c-primary)] text-[var(--c-text)]'
+          : 'border-transparent text-[var(--c-text-2)] hover:text-[var(--c-text)]'"
+        @click="activeTab = tab.key"
       >
-        {{ $t('settings.clearPreferences') }}
+        {{ tab.label }}
       </button>
     </div>
 
-    <!-- Python 运行时 -->
-    <div class="mt-4 rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] p-3 text-sm">
-      <div class="mb-2 font-semibold">Python 运行时</div>
-      <div v-if="pythonBusy" class="text-xs text-[var(--c-text-2)]">处理中…</div>
-      <template v-else-if="pythonRuntime && pythonRuntime.status === 'ready'">
-        <div class="space-y-1 text-xs text-[var(--c-text-2)]">
-          <div class="flex justify-between gap-4">
-            <span>来源</span>
-            <span class="text-[var(--c-text)]">{{ pythonRuntime.source === 'bundled' ? '内置（随程序捆绑，离线可用）' : '开发回退' }}</span>
-          </div>
-          <div class="flex justify-between gap-4">
-            <span>版本</span>
-            <span class="font-mono text-[var(--c-text)]">{{ pythonRuntime.version || '未知' }}</span>
-          </div>
-          <div class="flex justify-between gap-4">
-            <span>已装库</span>
-            <span class="text-[var(--c-text)]">{{ pythonRuntime.libraries.length > 0 ? pythonRuntime.libraries.join('、') : '（未检测到）' }}</span>
-          </div>
-          <div class="flex justify-between gap-4">
-            <span>位置</span>
-            <span class="truncate text-[var(--c-text)]">{{ pythonRuntime.pythonPath }}</span>
+    <!-- ============ 公共设置 ============ -->
+    <template v-if="activeTab === 'common'">
+      <!-- 路径与实例信息 -->
+      <div v-if="paths" class="mt-4 space-y-2 text-sm">
+        <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
+          <span class="shrink-0 text-[var(--c-text-2)]">{{ $t('settings.configDir') }}</span>
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="truncate text-[var(--c-text)]">{{ paths.configDir }}</span>
+            <button class="shrink-0 text-xs text-[var(--c-primary)] hover:underline" @click="openFolder(paths.configDir)">
+              {{ $t('settings.openDir') }}
+            </button>
           </div>
         </div>
-      </template>
-      <div v-else class="text-xs text-[var(--c-text-2)]">
-        未初始化。内置 Python 随安装包捆绑，首次使用需初始化一次（本地复制，离线可用）。
+        <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
+          <span class="shrink-0 text-[var(--c-text-2)]">{{ $t('settings.logDir') }}</span>
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="truncate text-[var(--c-text)]">{{ paths.logDir }}</span>
+            <button class="shrink-0 text-xs text-[var(--c-primary)] hover:underline" @click="openFolder(paths.logDir)">
+              {{ $t('settings.openDir') }}
+            </button>
+          </div>
+        </div>
+        <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
+          <span class="shrink-0 text-[var(--c-text-2)]">{{ $t('settings.tempRoot') }}</span>
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="truncate text-[var(--c-text)]">{{ paths.tempRoot }}</span>
+            <button class="shrink-0 text-xs text-[var(--c-primary)] hover:underline" @click="openFolder(paths.tempRoot)">
+              {{ $t('settings.openDir') }}
+            </button>
+          </div>
+        </div>
+        <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
+          <span class="shrink-0 text-[var(--c-text-2)]">{{ $t('settings.sessionTempUsed') }}</span>
+          <span class="text-[var(--c-text)]">{{ formatBytes(paths.sessionTempUsedBytes) }}</span>
+        </div>
+        <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
+          <div>
+            <div class="text-[var(--c-text-2)]">{{ $t('settings.instanceId') }}</div>
+            <div class="text-xs text-[var(--c-text-3)]">{{ $t('settings.instanceIdHint') }}</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="font-mono text-xs text-[var(--c-text)]">{{ paths.instanceId }}</span>
+            <button class="text-xs text-[var(--c-primary)] hover:underline" @click="copyText(paths.instanceId)">
+              {{ $t('settings.copy') }}
+            </button>
+          </div>
+        </div>
       </div>
-      <div class="mt-2 flex gap-2">
-        <button
-          class="rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-3 py-1.5 text-xs hover:bg-[var(--c-surface-2)] disabled:opacity-50"
-          :disabled="pythonBusy"
-          @click="onInitPythonRuntime"
-        >
-          {{ pythonRuntime?.status === 'ready' ? '重新初始化' : '初始化运行时' }}
-        </button>
-        <button
-          v-if="pythonRuntime?.status === 'ready'"
-          class="rounded border border-[var(--c-danger-soft)] bg-[var(--c-surface)] px-3 py-1.5 text-xs text-[var(--c-danger)] hover:bg-[var(--c-danger-soft)] disabled:opacity-50"
-          :disabled="pythonBusy"
-          @click="onUninstallPythonRuntime"
-        >
-          卸载运行时
-        </button>
-      </div>
-    </div>
 
-    <!-- 危险操作：卸载程序并清除本机数据 -->
-    <div class="mt-4 rounded border border-[var(--c-danger)] bg-[var(--c-danger-soft)] p-3">
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <div class="text-sm font-semibold text-[var(--c-danger)]">卸载程序</div>
-          <div class="mt-0.5 text-xs text-[var(--c-danger)]">
-            卸载 GigaCenter，并一并删除本机配置、日志与临时数据（不可撤销）
+      <!-- 外观：主题（亮/暗/跟随系统）与界面字号 -->
+      <div v-if="prefs" class="mt-4 space-y-2 text-sm">
+        <div class="rounded bg-[var(--c-surface)] px-3 py-2">
+          <div class="mb-2">主题外观</div>
+          <div class="flex gap-2">
+            <button
+              v-for="opt in themeOptions"
+              :key="opt.value"
+              class="flex-1 rounded border px-2 py-1.5 text-xs"
+              :class="prefs.theme === opt.value
+                ? 'border-[var(--c-primary)] bg-[var(--c-primary-soft)] text-[var(--c-text)]'
+                : 'border-[var(--c-border-strong)] hover:bg-[var(--c-surface-2)]'"
+              @click="setPref({ theme: opt.value })"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+          <div class="mt-1 text-xs text-[var(--c-text-3)]">
+            {{ themeOptions.find((o) => o.value === prefs?.theme)?.hint }}
           </div>
         </div>
+        <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
+          <div>
+            <div>界面字号</div>
+            <div class="text-xs text-[var(--c-text-3)]">全局文字与控件尺寸，即时生效</div>
+          </div>
+          <div class="flex items-center gap-3">
+            <input
+              type="range"
+              min="12"
+              max="18"
+              step="1"
+              class="w-36 accent-[var(--c-primary)]"
+              :value="prefs.fontSize"
+              @input="onFontSizeChange"
+            />
+            <span class="w-10 text-xs text-[var(--c-text-2)]">{{ prefs.fontSize }}px</span>
+          </div>
+        </div>
+
+        <!-- 行为：长路径 / 系统通知 -->
+        <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
+          <div>
+            <div>启用长路径支持</div>
+            <div class="text-xs text-[var(--c-text-3)]">路径超 260 字符时使用 \\?\ 前缀（默认关，改动即时生效）</div>
+          </div>
+          <input
+            type="checkbox"
+            class="h-4 w-4 accent-[var(--c-primary)]"
+            :checked="prefs.longPathSupport"
+            @change="setPref({ longPathSupport: ($event.target as HTMLInputElement).checked })"
+          />
+        </div>
+        <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
+          <div>
+            <div>系统通知</div>
+            <div class="text-xs text-[var(--c-text-3)]">仅长任务完成/失败时通知，应用内提示不受影响</div>
+          </div>
+          <input
+            type="checkbox"
+            class="h-4 w-4 accent-[var(--c-primary)]"
+            :checked="prefs.notificationsEnabled"
+            @change="setPref({ notificationsEnabled: ($event.target as HTMLInputElement).checked })"
+          />
+        </div>
+
+        <!-- 快捷键配置（全局项；SQL 编辑器专属项在「SQL 分析」分区） -->
+        <div class="mt-4">
+          <div class="mb-1 text-sm font-semibold">快捷键配置（全局）</div>
+          <div class="overflow-hidden rounded bg-[var(--c-surface)]">
+            <div v-for="(label, key) in commonShortcutLabels" :key="key" class="flex items-center justify-between border-b border-[var(--c-border)] px-3 py-1.5 last:border-b-0">
+              <span class="text-sm text-[var(--c-text)]">{{ label }}</span>
+              <input
+                class="w-44 rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-2 py-1 text-xs text-[var(--c-text)]"
+                :value="prefs.shortcuts[key] ?? ''"
+                placeholder="如 Ctrl+O"
+                @change="onShortcutChange(key, ($event.target as HTMLInputElement).value)"
+              />
+            </div>
+            <div class="px-3 py-1.5 text-xs text-[var(--c-text-3)]">
+              编辑后立即保存；CodeMirror 编辑器内 Ctrl+Enter 执行、Ctrl+Shift+Enter 执行选中、Ctrl+Shift+F 格式化已内置生效。
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 诊断 / 调试 -->
+      <div v-if="prefs" class="mt-4 space-y-2">
+        <div class="flex items-center gap-3">
+          <button
+            class="rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-3 py-1.5 text-sm text-[var(--c-text)] hover:bg-[var(--c-surface-2)]"
+            @click="onExportDiagnostics"
+          >
+            导出诊断包
+          </button>
+          <span class="text-xs text-[var(--c-text-3)]">脱敏信息：版本、系统、实例 ID、最近日志；不含原始数据与 SQL 全文</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <button
+            class="rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-3 py-1.5 text-sm text-[var(--c-text)] hover:bg-[var(--c-surface-2)]"
+            @click="onOpenDevTools"
+          >
+            打开控制台
+          </button>
+          <button
+            class="rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-3 py-1.5 text-sm text-[var(--c-text)] hover:bg-[var(--c-surface-2)]"
+            @click="onOpenExeFolder"
+          >
+            打开程序所在目录
+          </button>
+          <span class="text-xs text-[var(--c-text-3)]">控制台在独立窗口打开，诊断模式调试用</span>
+        </div>
+      </div>
+
+      <!-- 清除偏好 -->
+      <div class="mt-4 flex gap-2">
         <button
-          class="shrink-0 rounded bg-[var(--c-danger)] px-3 py-1.5 text-sm text-white hover:opacity-90 disabled:opacity-50"
-          :disabled="uninstalling"
-          @click="onUninstall"
+          class="rounded border border-[var(--c-danger-soft)] bg-[var(--c-danger-soft)] px-3 py-1.5 text-sm text-[var(--c-danger)] hover:bg-[var(--c-danger-soft)]"
+          @click="onClearPreferences"
         >
-          {{ uninstalling ? '正在卸载…' : '卸载程序并清除数据' }}
+          {{ $t('settings.clearPreferences') }}
         </button>
       </div>
-    </div>
+
+      <!-- 危险操作：卸载程序并清除本机数据 -->
+      <div class="mt-4 rounded border border-[var(--c-danger)] bg-[var(--c-danger-soft)] p-3">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="text-sm font-semibold text-[var(--c-danger)]">卸载程序</div>
+            <div class="mt-0.5 text-xs text-[var(--c-danger)]">
+              卸载 GigaCenter，并一并删除本机配置、日志与临时数据（不可撤销）
+            </div>
+          </div>
+          <button
+            class="shrink-0 rounded bg-[var(--c-danger)] px-3 py-1.5 text-sm text-white hover:opacity-90 disabled:opacity-50"
+            :disabled="uninstalling"
+            @click="onUninstall"
+          >
+            {{ uninstalling ? '正在卸载…' : '卸载程序并清除数据' }}
+          </button>
+        </div>
+      </div>
+    </template>
+
+    <!-- ============ 格式转换设置 ============ -->
+    <template v-if="activeTab === 'convert'">
+      <div v-if="prefs" class="mt-4 space-y-2 text-sm">
+        <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
+          <div>
+            <div>上次打开目录</div>
+            <div class="text-xs text-[var(--c-text-3)]">导入文件时默认从该目录选择；清除后回到默认位置</div>
+          </div>
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="truncate text-[var(--c-text-3)]">{{ prefs.lastOpenDirectory || '（未记忆）' }}</span>
+            <button
+              v-if="prefs.lastOpenDirectory"
+              class="shrink-0 text-xs text-[var(--c-danger)] hover:underline"
+              @click="onClearDirMemory('lastOpenDirectory')"
+            >
+              清除记忆
+            </button>
+          </div>
+        </div>
+        <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
+          <div>
+            <div>上次导出目录</div>
+            <div class="text-xs text-[var(--c-text-3)]">导出时默认保存到该目录；清除后回到默认位置</div>
+          </div>
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="truncate text-[var(--c-text-3)]">{{ prefs.lastExportDirectory || '（未记忆）' }}</span>
+            <button
+              v-if="prefs.lastExportDirectory"
+              class="shrink-0 text-xs text-[var(--c-danger)] hover:underline"
+              @click="onClearDirMemory('lastExportDirectory')"
+            >
+              清除记忆
+            </button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- ============ SQL 分析设置 ============ -->
+    <template v-if="activeTab === 'analyze'">
+      <div v-if="prefs" class="mt-4 space-y-2 text-sm">
+        <div class="flex items-center justify-between gap-4 rounded bg-[var(--c-surface)] px-3 py-2">
+          <div>
+            <div>{{ $t('settings.allowModifyTempDb') }}</div>
+            <div class="text-xs text-[var(--c-text-3)]">{{ $t('settings.allowModifyTempDbHint') }}</div>
+          </div>
+          <input
+            type="checkbox"
+            class="h-4 w-4 accent-[var(--c-primary)]"
+            :checked="prefs.allowModifyTempDb"
+            @change="setPref({ allowModifyTempDb: ($event.target as HTMLInputElement).checked })"
+          />
+        </div>
+
+        <div class="mt-4">
+          <div class="mb-1 text-sm font-semibold">快捷键配置（SQL 编辑器）</div>
+          <div class="overflow-hidden rounded bg-[var(--c-surface)]">
+            <div v-for="(label, key) in sqlShortcutLabels" :key="key" class="flex items-center justify-between border-b border-[var(--c-border)] px-3 py-1.5 last:border-b-0">
+              <span class="text-sm text-[var(--c-text)]">{{ label }}</span>
+              <input
+                class="w-44 rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-2 py-1 text-xs text-[var(--c-text)]"
+                :value="prefs.shortcuts[key] ?? ''"
+                placeholder="如 Ctrl+Enter"
+                @change="onShortcutChange(key, ($event.target as HTMLInputElement).value)"
+              />
+            </div>
+            <div class="px-3 py-1.5 text-xs text-[var(--c-text-3)]">
+              CodeMirror 编辑器内 Ctrl+Enter 执行、Ctrl+Shift+Enter 执行选中、Ctrl+Shift+F 格式化已内置生效。
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- ============ Python 分析设置 ============ -->
+    <template v-if="activeTab === 'python'">
+      <div v-if="prefs" class="mt-4 space-y-2 text-sm">
+        <!-- 单次执行上限 -->
+        <div class="rounded bg-[var(--c-surface)] px-3 py-2">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <div>单次执行上限</div>
+              <div class="text-xs text-[var(--c-text-3)]">超时自动终止执行（10~600 秒，改动后下次执行生效）</div>
+            </div>
+            <div class="flex items-center gap-3">
+              <input
+                type="range"
+                min="10"
+                max="600"
+                step="5"
+                class="w-44 accent-[var(--c-primary)]"
+                :value="prefs.pythonTimeoutMs"
+                @input="onPythonTimeoutChange"
+              />
+              <input
+                type="number"
+                min="10"
+                max="600"
+                class="w-20 rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-2 py-1 text-xs text-[var(--c-text)]"
+                :value="prefs.pythonTimeoutMs"
+                @change="onPythonTimeoutChange"
+              />
+              <span class="w-8 text-xs text-[var(--c-text-2)]">秒</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Python 运行时 -->
+      <div class="mt-4 rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] p-3 text-sm">
+        <div class="mb-2 font-semibold">Python 运行时</div>
+        <div v-if="pythonBusy" class="text-xs text-[var(--c-text-2)]">处理中…</div>
+        <template v-else-if="pythonRuntime && pythonRuntime.status === 'ready'">
+          <div class="space-y-1 text-xs text-[var(--c-text-2)]">
+            <div class="flex justify-between gap-4">
+              <span>来源</span>
+              <span class="text-[var(--c-text)]">{{ pythonRuntime.source === 'bundled' ? '内置（随程序捆绑，离线可用）' : '开发回退' }}</span>
+            </div>
+            <div class="flex justify-between gap-4">
+              <span>版本</span>
+              <span class="font-mono text-[var(--c-text)]">{{ pythonRuntime.version || '未知' }}</span>
+            </div>
+            <div class="flex justify-between gap-4">
+              <span>已装库</span>
+              <span class="text-[var(--c-text)]">{{ pythonRuntime.libraries.length > 0 ? pythonRuntime.libraries.join('、') : '（未检测到）' }}</span>
+            </div>
+            <div class="flex justify-between gap-4">
+              <span>位置</span>
+              <span class="truncate text-[var(--c-text)]">{{ pythonRuntime.pythonPath }}</span>
+            </div>
+          </div>
+        </template>
+        <div v-else class="text-xs text-[var(--c-text-2)]">
+          未初始化。内置 Python 随安装包捆绑，首次使用需初始化一次（本地复制，离线可用）。
+        </div>
+        <div class="mt-2 flex gap-2">
+          <button
+            class="rounded border border-[var(--c-border-strong)] bg-[var(--c-surface)] px-3 py-1.5 text-xs hover:bg-[var(--c-surface-2)] disabled:opacity-50"
+            :disabled="pythonBusy"
+            @click="onInitPythonRuntime"
+          >
+            {{ pythonRuntime?.status === 'ready' ? '重新初始化' : '初始化运行时' }}
+          </button>
+          <button
+            v-if="pythonRuntime?.status === 'ready'"
+            class="rounded border border-[var(--c-danger-soft)] bg-[var(--c-surface)] px-3 py-1.5 text-xs text-[var(--c-danger)] hover:bg-[var(--c-danger-soft)] disabled:opacity-50"
+            :disabled="pythonBusy"
+            @click="onUninstallPythonRuntime"
+          >
+            卸载运行时
+          </button>
+        </div>
+      </div>
+    </template>
   </div>
 </template>
